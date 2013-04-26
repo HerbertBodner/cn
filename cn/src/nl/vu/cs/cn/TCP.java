@@ -106,6 +106,15 @@ public class TCP {
 
             return false;
         }
+        
+        
+        private void send_tcp_packet() {
+        	
+        }
+        
+        private void recv_tcp_packet() {
+        	
+        }
     }
 
     /**
