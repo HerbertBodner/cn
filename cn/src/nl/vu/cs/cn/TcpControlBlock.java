@@ -49,7 +49,7 @@ public class TcpControlBlock {
 	/** The current TCP connection state. */
 	ConnectionState tcb_state; 
 	
-	
+	// empty
 	/** constructor */
 	public TcpControlBlock(IpAddress local_ip, IpAddress remote_ip, int local_port, int remote_port) throws InvalidParameterException
 	{
