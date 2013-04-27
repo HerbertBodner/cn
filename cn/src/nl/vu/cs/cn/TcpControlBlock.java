@@ -49,7 +49,6 @@ public class TcpControlBlock {
 	/** The current TCP connection state. */
 	ConnectionState tcb_state; 
 	
-	// empty
 	/** constructor */
 	public TcpControlBlock(IpAddress local_ip, IpAddress remote_ip, int local_port, int remote_port) throws InvalidParameterException
 	{
@@ -66,30 +65,8 @@ public class TcpControlBlock {
 			throw new InvalidParameterException("Invalid remote IP address.");
 		}
 		tcb_remote_ip_addr = remote_ip;
-		
-		// check for valid local port
-		if (local_port < 0 || local_port > 65535)
-		{
-			throw new InvalidParameterException("Local port number allowed between 0 and 65535.");
-		}
-		tcb_local_port = local_port;
-		
-		// check for valid remote port
-		if (remote_port < 0 || remote_port > 65535)
-		{
-			throw new InvalidParameterException("Remote port number allowed between 0 and 65535.");
-		}
-		tcb_remote_port = remote_port;
 	}
 	
 	
-	/** return a byte array, which contains a valid TCP header depending on the current variables in the TcpControlBlock (like tcb_local_sequence_num,..) */
-	public byte[] GetTCPHeader()
-	{
-		byte[] header = new byte[20];
-		
-		
-		
-		return header;
-	}
+
 }

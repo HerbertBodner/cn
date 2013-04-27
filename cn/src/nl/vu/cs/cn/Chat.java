@@ -1,6 +1,5 @@
 package nl.vu.cs.cn;
 
-
 import android.app.Activity;
 import android.os.Bundle;
 
@@ -10,9 +9,7 @@ public class Chat extends Activity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		
-		//TODO
-		//setContentView(R.layout.main);
+		setContentView(R.layout.main);
 
 		// Connect various GUI components to the networking stack.
 	}
