@@ -1,8 +1,7 @@
 package nl.vu.cs.cn.test;
 
+
 import java.io.IOException;
-
-
 
 
 import junit.framework.TestCase;
@@ -22,8 +21,9 @@ public class TcpPacketTest extends TestCase {
 		assertEquals(0, i);
 	}
 	
-	public void testTcpPacketCreation()
-	{/*
+	public void testTcpPacketCreationBeforeSend()
+	{
+		/*
 		TCP tcp;
 		IP ip_source, ip_dest;
 		try {
@@ -46,6 +46,12 @@ public class TcpPacketTest extends TestCase {
 		assertFalse(packet.isACK_Flag());
 		assertFalse(packet.isRST_Flag());
 		assertFalse(packet.isSYN_Flag());
-		assertFalse(packet.isFIN_Flag());*/
+		assertFalse(packet.isFIN_Flag());
+		*/
+	}
+	
+	public void testTcpPacketCreationAfterReceive()
+	{
+		
 	}
 }

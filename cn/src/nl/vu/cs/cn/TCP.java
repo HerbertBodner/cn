@@ -158,7 +158,10 @@ public class TCP {
     	/* the data for the TCP packet*/
     	byte[] data;
     	
+    	/* the length of the TCP Packet */
+    	int packetLength;
     	
+    	 
     	/**Constructor*/
     	public TcpPacket(int source_IpAddress, int destination_IpAddress, int source_port, int destination_port, long seq_nr, long ack_nr, byte[] payload)
     	{
@@ -242,6 +245,9 @@ public class TCP {
     		
     		// Payload, set the payload
     		rawData.put(payload);
+    		
+    		// the length of the TCP packet is the length of the payload plus the 20 byte TCP header (in Bytes)
+    		packetLength = payload.length + 20;
     	}
     	
     	
@@ -254,8 +260,57 @@ public class TCP {
     		// set checksum to 0
     		rawData.putShort(16, (short)0);
     		
+    		byte[] buf = rawData.array();
+    		int leftSum = 0;
+			int rightSum = 0;
+			int sum = 0;
+			
+
+			// calculate the 16bit one´s complement sum for the left 8 bit and the right 8 bit separately
+			// byte is signed, therefore add "& 0xFF" to get an unsigned value
+			for(int i=0 ; i<packetLength-1; i+=2 ) {
+				leftSum += buf[i] & 0xFF;
+				rightSum += buf[i+1] & 0xFF;			
+			}
+			
+			// if packetLength contains odd bytes, add the last byte
+			if( (packetLength&1) != 0) {
+				leftSum += buf[packetLength-1] & 0xFF;
+			}
+			
+			// form complete sum
+			sum = (leftSum << 8) + rightSum;
+			
+			// ADD CHECKSUM OF PSEUDO HEADER
+			// add source/destination IP address
+			sum += source_ip & 0xFFFF;
+			sum += (source_ip >>> 16) & 0xFFFF;
+			sum += destination_ip & 0xFFFF;
+			sum += (destination_ip >>> 16) & 0xFFFF;
+			
+			
+			// add IP protocol nr 6
+			sum += 6;
+			
+			// add packet length
+			sum += packetLength;
+									
+			// add overflow
+			while( (sum>>>16) != 0 ) {
+				sum = (sum & 0xFFFF) + (sum >>> 16);
+			}
+			sum = ~sum;
+			rawData.putShort(16, (short) sum );
     	}
     	
+    	
+    	/**
+    	 * Returns the whole TCP packet as byte array
+    	 */
+    	public byte[] getByteArray()
+    	{
+    		return rawData.array();
+    	}
     	
     	/**
 		 * Get the value of the ACK flag
