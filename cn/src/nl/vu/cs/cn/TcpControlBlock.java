@@ -14,40 +14,40 @@ import nl.vu.cs.cn.IP.IpAddress;
 public class TcpControlBlock {
 
 	//TODO
-	static int TCB_BUF_SIZE = 1024;
+	static int TCP_BUF_SIZE = 8192;
 	
 	/** Our IP address. */
-	IpAddress tcb_local_ip_addr;
+	IpAddress tcp_local_ip_addr;
 	
 	/** Their IP address. */
-	IpAddress tcb_remote_ip_addr;
+	IpAddress tcp_remote_ip_addr;
 	
 	/** Our port number. */
-	int tcb_local_port;
+	int tcp_local_port;
 	
 	/** Their port number. */
-	int tcb_remote_port;
+	int tcp_remote_port;
 	
 	/** What we know they know. */
-	int tcb_local_sequence_num;
+	int tcp_local_sequence_num;
 	
 	/** What we want them to ack. */
-	int tcb_local_expected_ack;
+	int tcp_local_expected_ack;
 	
 	/** What we think they know we know. */
-	int tcb_remote_sequence_num;
+	int tcp_remote_sequence_num;
 	
 	/** Static buffer for recv data. */
-	byte tcb_data[];
+	byte tcp_data[];
 	
 	/** The undelivered data. */
-	byte tcb_p_data; 
+	byte tcp_p_data; 
 	
 	/** Undelivered data bytes. */
-	int tcb_data_left; 
+	int tcp_data_left; 
 	
 	/** The current TCP connection state. */
-	ConnectionState tcb_state; 
+	ConnectionState tcp_state; 
 	
 	/** constructor */
 	public TcpControlBlock(IpAddress local_ip, IpAddress remote_ip, int local_port, int remote_port) throws InvalidParameterException
@@ -57,14 +57,14 @@ public class TcpControlBlock {
 		{
 			throw new InvalidParameterException("Invalid local IP address.");
 		}
-		tcb_local_ip_addr = local_ip;
+		tcp_local_ip_addr = local_ip;
 		
 		// check remote ip
 		if (remote_ip == null)
 		{
 			throw new InvalidParameterException("Invalid remote IP address.");
 		}
-		tcb_remote_ip_addr = remote_ip;
+		tcp_remote_ip_addr = remote_ip;
 	}
 	
 	
