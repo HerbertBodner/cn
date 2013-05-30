@@ -26,12 +26,13 @@ public class TCP {
     public class Socket {
 
     	/* Hint: You probably need some socket specific data. */
-
+    	private TcpControlBlock tcpControlBlock = null;
+    	
     	/**
     	 * Construct a client socket.
     	 */
     	private Socket() {
-
+    		tcpControlBlock = new TcpControlBlock();
     	}
 
     	/**
@@ -53,8 +54,12 @@ public class TCP {
         public boolean connect(IpAddress dst, int port) {
 
             // Implement the connection side of the three-way handshake here.
-        	ip.getLocalAddress();
-
+        	IpAddress localIp = ip.getLocalAddress();
+        	
+        	// TODO: sent syn
+        	tcpControlBlock.SetSynSentState(localIp, dst,  port);
+        	
+        	// TODO: wait for receive, check and set the correct connection state
             return false;
         }
 
@@ -130,12 +135,12 @@ public class TCP {
      * This class represents a TCP Packet 
      *
      */
-    public class TcpPacket implements Serializable {
+    public class TcpPacket {
     	
-    	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper border of the seq_nr and the ack_nr. */
+    	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper boundary of the seq_nr and the ack_nr. */
     	static final long MAX32BIT_VALUE = 4294967295l;
     	
-    	/* the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper border of the source_port and destination_port. */
+    	/* the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper boundary of the source_port and destination_port. */
     	static final int MAX16BIT_VALUE = 65535;
     	
     	//TODO check the max length of the payload: 
@@ -224,7 +229,7 @@ public class TCP {
     		/* TCP header length: in our case we have no Options, therefore the header has a fixed length of 5 32-bit words*/
     		rawData.put(12, (byte)(5 << 4));
        	
-        	
+        	// although follwing code has a bad performance, it is more readable
     		int flags =	0 << 5		// urgent flag, which is always false in our case 
     					+ 0 << 4	// ack flag, which is 0 by default, but can be changed by the method setACK_Flag
     					+ 1 << 3	// push flag, which is always true in our case

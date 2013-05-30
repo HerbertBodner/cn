@@ -4,9 +4,9 @@ package nl.vu.cs.cn.test;
 import java.io.IOException;
 
 
-import junit.framework.TestCase;
+import android.test.AndroidTestCase;
 
-public class TcpPacketTest extends TestCase {
+public class TcpPacketTest extends AndroidTestCase {
 
 	protected void setUp() throws Exception {
 		super.setUp();
@@ -21,8 +21,8 @@ public class TcpPacketTest extends TestCase {
 		assertEquals(0, i);
 	}
 	
-	public void testTcpPacketCreationBeforeSend()
-	{
+	public void testTcpPacketCreationBeforeSend() {
+		
 		/*
 		TCP tcp;
 		IP ip_source, ip_dest;
