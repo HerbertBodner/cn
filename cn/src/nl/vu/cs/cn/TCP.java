@@ -1,6 +1,8 @@
 package nl.vu.cs.cn;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
@@ -26,29 +28,38 @@ public class TCP {
     public class Socket {
 
     	/* Hint: You probably need some socket specific data. */
-    	private TcpControlBlock tcpControlBlock = null;
+
+    	TcpControlBlock control;
+    	IP.Packet sent_IP_packet;
+    	IP.Packet recv_IP_packet;
+
     	
     	/**
     	 * Construct a client socket.
+    	 * @throws IOException 
     	 */
+
     	private Socket() {
-    		tcpControlBlock = new TcpControlBlock();
+			control = new TcpControlBlock();
     	}
 
     	/**
     	 * Construct a server socket bound to the given local port.
 		 *
     	 * @param port the local port to use
+    	 * @throws IOException 
     	 */
-        private Socket(int port) {
-			// TODO Auto-generated constructor stub
+        private Socket(int port) throws IOException {
+        	// TODO: check byte order
+        	//control = new TcpControlBlock(ip.getLocalAddress(),	ip.getLocalAddress(), port, TCP.PORT);
+        	//control.tcp_state = ConnectionState.S_LISTEN;
 		}
 
 		/**
          * Connect this socket to the specified destination and port.
          *
          * @param dst the destination to connect to
-         * @param port the port to connect to
+         * @param dst the port to connect to
          * @return true if the connect succeeded.
          */
         public boolean connect(IpAddress dst, int port) {
@@ -57,7 +68,7 @@ public class TCP {
         	IpAddress localIp = ip.getLocalAddress();
         	
         	// TODO: sent syn
-        	tcpControlBlock.SetSynSentState(localIp, dst,  port);
+        	control.SetSynSentState(localIp, dst,  port);
         	
         	// TODO: wait for receive, check and set the correct connection state
             return false;
@@ -82,11 +93,14 @@ public class TCP {
          * @param offset the offset to begin reading data into
          * @param maxlen the maximum number of bytes to read
          * @return the number of bytes read, or -1 if an error occurs.
+         * @throws InterruptedException 
+         * @throws IOException 
          */
-        public int read(byte[] buf, int offset, int maxlen) {
+        public int read(byte[] buf, int offset, int maxlen) throws IOException, InterruptedException {
 
             // Read from the socket here.
-
+        	recv_tcp_packet();
+        	buf = control.tcb_data;
             return -1;
         }
 
@@ -97,11 +111,28 @@ public class TCP {
          * @param offset the offset to begin writing data from
          * @param len the number of bytes to write
          * @return the number of bytes written or -1 if an error occurs.
+         * @throws IOException 
          */
-        public int write(byte[] buf, int offset, int len) {
-
+        public int write(byte[] buf, int offset, int len) throws IOException {
             // Write to the socket here.
-
+        	ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        	ObjectOutput out = new ObjectOutputStream(bos);
+        	TcpPacket next_packet = new TcpPacket(
+        			control.tcb_local_ip_addr.getAddress(),		// local IP
+        			control.tcb_remote_ip_addr.getAddress(), 	// remote IP
+        			65000, 										// local PORT
+        			65000, 										// remote PORT
+        			4294967294l, 								// SEQ number
+        			4294967295l, 								// ACK number
+        			buf);
+        	out.writeObject(next_packet);
+        	byte[] ip_data = bos.toByteArray();		
+        	this.sent_IP_packet = new IP.Packet (control.tcb_remote_ip_addr.getAddress(),
+        			IP.TCP_PROTOCOL,
+        			1,	// TODO: change this
+        			ip_data,
+        			ip_data.length);		// check this later
+        	send_tcp_packet();
             return -1;
         }
 
@@ -119,12 +150,13 @@ public class TCP {
         }
         
         
-        private void send_tcp_packet() {
-        	
+        private void send_tcp_packet() throws IOException {
+        	ip.ip_send(this.sent_IP_packet);
         }
         
-        private void recv_tcp_packet() {
-        	
+        private void recv_tcp_packet() throws IOException, InterruptedException {
+        	ip.ip_receive_timeout(recv_IP_packet, 1000);
+        	control.tcb_data = recv_IP_packet.data;
         }
     }
 
@@ -137,16 +169,19 @@ public class TCP {
      */
     public class TcpPacket {
     	
-    	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper boundary of the seq_nr and the ack_nr. */
-    	static final long MAX32BIT_VALUE = 4294967295l;
+
+    	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper border of the seq_nr and the ack_nr. */
+    	static final long MAX32BIT_VALUE = 4294967295l; 	// AA: equivalent to Integer.MAX_VALUE-Integer.MIN_VALUE
     	
-    	/* the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper boundary of the source_port and destination_port. */
-    	static final int MAX16BIT_VALUE = 65535;
+    	/* the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper border of the source_port and destination_port. */
+    	static final int MAX16BIT_VALUE = 65535;			// AA: equivalent to Short.MAX_VALUE-Short.MIN_VALUE
     	
     	//TODO check the max length of the payload: 
 		//  - in the book (p. 539) they say it큦 536 by default 
 		//  - Wikipedia says it is 1500 - 20 - 20 = 1460 Byte (20 Byte IP-Header, 20 Byte TCP-Header)
-		static final int MAX_PAYLOAD_LENGTH = 536;
+    	// AA: see Knowledge Sharing AA-0.1 about max payload
+		static final int MAX_PAYLOAD_LENGTH = 8152;
+		static final int HEADER_SIZE = 20;	// AA: TCP header size is 20B
     	
     	/* the source IP address, which is needed for calculation of the checksum*/
     	int source_ip;
@@ -173,8 +208,8 @@ public class TCP {
     		source_ip = source_IpAddress;
     		destination_ip = destination_IpAddress;
 
-    		/*Reserver space for the TCP packet, which can have at most 1500 bytes*/
-    		rawData = ByteBuffer.allocate(1500);
+    		// Reserved space for the TCP packet
+    		rawData = ByteBuffer.allocate(MAX_PAYLOAD_LENGTH+HEADER_SIZE);
     		
     		// check for valid source port
 			if (source_port < 0 || source_port > MAX16BIT_VALUE)
@@ -218,18 +253,39 @@ public class TCP {
     	private void fillTcpPacket(int source_port, int destination_port, long seq_nr, long ack_nr, byte[] payload)
     	{   		
     		// TODO: check whether the conversion (int to short) is done correctly for e.g. 65535 
+    		// AA: I think it's safer (and easier to control) converting to byte array 
+    		// TODO: check byte ordering (little endian vs. big endian): host uses big endian
+    		byte[] raw_src_port = ByteBuffer.allocate(4).putInt(source_port).array();
+    		byte[] raw_dest_port = ByteBuffer.allocate(4).putInt(destination_port).array();
+    		byte[] raw_seq_nr = ByteBuffer.allocate(8).putLong(seq_nr).array();
+    		byte[] raw_ack_nr = ByteBuffer.allocate(8).putLong(ack_nr).array();
     		
     		// set the source_port, destination_port, seq_nr and ack_nr in the rawData of the TCP packet
-    		rawData.putShort(0, (short)source_port);
-    		rawData.putShort(2, (short)destination_port);
-    		rawData.putInt(4, (int)seq_nr);
-    		rawData.putInt(8, (int)ack_nr);
-    		
+    		// AA: because we are using big endian we ignore the first half of each int/long when extracting short/int from them
+    		// (alternatively we could also shift <<2/<<4 and use putShort/putInt)
+    		rawData.put(0, raw_src_port[2]);
+    		rawData.put(1, raw_src_port[3]);
+    		//rawData.putShort(0, (short)source_port);
+    		rawData.put(2, raw_dest_port[2]);
+    		rawData.put(3, raw_dest_port[3]);
+    		//rawData.putShort(2, (short)destination_port);
+    		rawData.put(4, raw_seq_nr[4]);
+    		rawData.put(5, raw_seq_nr[5]);
+    		rawData.put(6, raw_seq_nr[6]);
+    		rawData.put(7, raw_seq_nr[7]);
+    		//rawData.putInt(4, (int)seq_nr);
+    		rawData.put(8, raw_ack_nr[4]);
+    		rawData.put(9, raw_ack_nr[5]);
+    		rawData.put(10, raw_ack_nr[6]);
+    		rawData.put(11, raw_ack_nr[7]);
+    		//rawData.putInt(8, (int)ack_nr);
+    		// STATUS: 12 bytes set, 8 remaining in header    		
     		
     		/* TCP header length: in our case we have no Options, therefore the header has a fixed length of 5 32-bit words*/
+    		// STATUS: next byte is for DATA OFFSET, RESERVED and NS 
     		rawData.put(12, (byte)(5 << 4));
-       	
-        	// although follwing code has a bad performance, it is more readable
+
+    		// although follwing code has a bad performance, it is more readable
     		int flags =	0 << 5		// urgent flag, which is always false in our case 
     					+ 0 << 4	// ack flag, which is 0 by default, but can be changed by the method setACK_Flag
     					+ 1 << 3	// push flag, which is always true in our case
@@ -249,13 +305,13 @@ public class TCP {
     		rawData.putShort(18, (short)0);
     		
     		// Payload, set the payload
+    		
     		rawData.put(payload);
+    		// TODO: debug put methods, they do not seem to work ok
     		
     		// the length of the TCP packet is the length of the payload plus the 20 byte TCP header (in Bytes)
-    		packetLength = payload.length + 20;
+    		packetLength = payload.length + HEADER_SIZE;
     	}
-    	
-    	
     	
     	/**
     	 * Calculate the checksum and set it into the rawData of the TCP packet
@@ -293,9 +349,8 @@ public class TCP {
 			sum += destination_ip & 0xFFFF;
 			sum += (destination_ip >>> 16) & 0xFFFF;
 			
-			
 			// add IP protocol nr 6
-			sum += 6;
+			sum += IP.TCP_PROTOCOL;
 			
 			// add packet length
 			sum += packetLength;
@@ -342,6 +397,7 @@ public class TCP {
 		/**
 		 * Set the RST flag to true or to false
 		 */
+		// AA: RST flag should always be cleared (Section 2: Flags)
 		public void setRST_Flag(boolean rst_flag) {
 			setFlag(2, rst_flag);
 		}
@@ -365,6 +421,21 @@ public class TCP {
 		 */
 		public boolean isFIN_Flag() {
 			return (getFlags() & 1) == 1;
+		}
+
+		/**
+		 * Set the PSH flag to true or to false
+		 * should be true when sending data packets with payload (non-control packets)
+		 */
+		public void setPSH_Flag(boolean psh_flag) {
+			setFlag(0, psh_flag);
+		}
+		
+		/**
+		 * Get the value of the PSH flag
+		 */
+		public boolean isPSH_Flag() {
+			return (getFlags() & 3) == 1;
 		}
 
 		/**
@@ -424,16 +495,18 @@ public class TCP {
 
     /**
      * @return a new socket for this stack
+     * @throws IOException 
      */
-    public Socket socket() {
+    public Socket socket() throws IOException {
         return new Socket();
     }
 
     /**
      * @return a new server socket for this stack bound to the given port
      * @param port the port to bind the socket to.
+     * @throws IOException 
      */
-    public Socket socket(int port) {
+    public Socket socket(int port) throws IOException {
         return new Socket(port);
     }
 
