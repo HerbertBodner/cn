@@ -63,7 +63,7 @@ public class TcpPacketTest extends AndroidTestCase {
 		
 	}
 	*/
-	
+	// does the commit work? 30.05.2013
 	public void testBasicTCPsendRecv() {
 		TCP tcp1 = null;
 		TCP tcp2 = null;
