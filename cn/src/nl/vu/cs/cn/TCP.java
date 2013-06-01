@@ -174,10 +174,8 @@ public class TCP {
          * @param offset the offset to begin reading data into
          * @param maxlen the maximum number of bytes to read
          * @return the number of bytes read, or -1 if an error occurs.
-         * @throws InterruptedException 
-         * @throws IOException 
          */
-        public int read(byte[] buf, int offset, int maxlen) throws IOException, InterruptedException {
+        public int read(byte[] buf, int offset, int maxlen) {
 
             // Read from the socket here.
         	recv_tcp_packet();
@@ -195,8 +193,7 @@ public class TCP {
          * @throws IOException 
          */
         public int write(byte[] buf, int offset, int len) throws IOException {
-            // Write to the socket here.
-        	
+            // Write to the socket here.       	
         	TcpPacket next_packet = control.createTcpPacket(buf, offset, len, false);
         	if (next_packet == null) {
         		return -1;
@@ -247,6 +244,7 @@ public class TCP {
         	return true;
         }
         
+
         private boolean recv_tcp_packet() {
         	try {
 				ip.ip_receive_timeout(recv_IP_packet, 1000);
@@ -271,7 +269,6 @@ public class TCP {
      *
      */
     public class TcpPacket {
-
     	
     	//TODO check the max length of the payload: 
 		//  - in the book (p. 539) they say it´s 536 by default 

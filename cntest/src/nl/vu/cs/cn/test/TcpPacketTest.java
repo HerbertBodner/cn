@@ -2,14 +2,14 @@ package nl.vu.cs.cn.test;
 
 
 import java.io.IOException;
+
+import nl.vu.cs.cn.IP.IpAddress;
+import nl.vu.cs.cn.TCP;
+import nl.vu.cs.cn.TCP.TcpPacket;
 import android.test.AndroidTestCase;
 
 
 import junit.framework.Assert;
-import nl.vu.cs.cn.*;
-import nl.vu.cs.cn.IP.IpAddress;
-import nl.vu.cs.cn.TCP.TcpPacket;
-
 
 public class TcpPacketTest extends AndroidTestCase {
 
@@ -127,8 +127,9 @@ public class TcpPacketTest extends AndroidTestCase {
 		assertFalse(packet.isFIN_Flag());
 		
 	}
-	
-	
+	*/
+
+	/*
 	public void testBasicTCPsendRecv() {
 		TCP tcp1 = null;
 		TCP tcp2 = null;
@@ -152,5 +153,4 @@ public class TcpPacketTest extends AndroidTestCase {
 		
 	}
 	*/
-
 }
