@@ -140,7 +140,7 @@ public class IP {
      */
     public IP(int address) throws IOException {
         if (address < 1 || address > 254) {
-            throw new IllegalArgumentException("Invalid address. 1-254 only.");
+            throw new IOException("Invalid address. 1-254 only.");
         }
 
         ipAddress = IpAddress.getAddress("192.168.0." + address);

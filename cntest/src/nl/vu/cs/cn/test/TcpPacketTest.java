@@ -2,7 +2,6 @@ package nl.vu.cs.cn.test;
 
 
 import java.io.IOException;
-
 import nl.vu.cs.cn.IP.IpAddress;
 import nl.vu.cs.cn.TCP;
 import nl.vu.cs.cn.TCP.TcpPacket;
@@ -97,60 +96,27 @@ public class TcpPacketTest extends AndroidTestCase {
 		assertEquals(expectedHexString, actualHexString);
 	}
 	
-	/*
-	public void testTcpPacketCreationBeforeSend()
-	{
-		
-		TCP tcp = null;
-		
-		IP ip_source, ip_dest;
-		try {
-			ip_source = new IP(1);
-			ip_dest = new IP(2);
-			tcp = new TCP(1);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			fail("Creation of TCP instance threw a IOException: " + e.getMessage() + "\n\n" + e.getStackTrace());
-			return;
-		}
-		
-		
-		IpAddress source_ip = ip_source.getLocalAddress();
-		IpAddress dest_ip = ip_dest.getLocalAddress();
-		
-		
-		TcpPacket packet = tcp.new TcpPacket(1, 2, 65534, 65535, 4294967294l, 4294967295l, new byte[] {});
-		
-		assertFalse(packet.isACK_Flag());
-		assertFalse(packet.isSYN_Flag());
-		assertFalse(packet.isFIN_Flag());
-		
-	}
-	*/
+
 
 	/*
-	public void testBasicTCPsendRecv() {
+	public void testT013BasicTCPsendRecv() {
 		TCP tcp1 = null;
 		TCP tcp2 = null;
 		
-		IP ip_source, ip_dest;
 		try {
 			tcp1 = new TCP(1);
 			tcp2 = new TCP(2);
 			TCP.Socket sender = tcp1.socket();
-			TCP.Socket receiver = tcp2.socket();
+			TCP.Socket receiver = tcp2.socket(80);
 			
 			byte[] buf = ByteBuffer.allocate(10).array();
 			sender.write("test".getBytes(), 0, 4);
 			receiver.read(buf, 0, 10);
 			assertEquals("test".getBytes(), buf);
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			fail(e.getMessage() + "\n\n" + e.getStackTrace());
-			return;
 		}
 		
-	}
-	*/
+	}*/
+	
 }

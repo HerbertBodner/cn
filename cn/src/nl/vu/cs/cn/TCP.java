@@ -31,7 +31,6 @@ public class TCP {
     	
     	/**
     	 * Construct a client socket.
-    	 * @throws IOException 
     	 */
     	private Socket() {
 			control = new TcpControlBlock();
@@ -190,9 +189,9 @@ public class TCP {
          * @param offset the offset to begin writing data from
          * @param len the number of bytes to write
          * @return the number of bytes written or -1 if an error occurs.
-         * @throws IOException 
          */
-        public int write(byte[] buf, int offset, int len) throws IOException {
+        public int write(byte[] buf, int offset, int len) {
+        	        	
             // Write to the socket here.       	
         	TcpPacket next_packet = control.createTcpPacket(buf, offset, len, false);
         	if (next_packet == null) {
@@ -699,7 +698,7 @@ public class TCP {
     	 * Constructor called by server 
     	 * @param local_ip
     	 * @param local_port
-    	 * @throws InvalidParameterException
+    	 * @throws IOException
     	 */
     	public TcpControlBlock(IpAddress local_ip, int local_port) throws IOException
     	{			
@@ -710,7 +709,7 @@ public class TCP {
     		tcb_local_ip_addr = local_ip.getAddress();
     		
     		// check local port
-    		if (ConnectionUtils.isPortValid(local_port)) {
+    		if (!ConnectionUtils.isPortValid(local_port)) {
     			throw new IOException("Invalid local port!");
     		}
 
@@ -927,16 +926,15 @@ public class TCP {
 
     /**
      * @return a new socket for this stack
-     * @throws IOException 
      */
-    public Socket socket() throws IOException {
+    public Socket socket() {
         return new Socket();
     }
 
     /**
      * @return a new server socket for this stack bound to the given port
      * @param port the port to bind the socket to.
-     * @throws IOException 
+     * @throws IOException when an invalid socket is passed  
      */
     public Socket socket(int port) throws IOException {
         return new Socket(port);
