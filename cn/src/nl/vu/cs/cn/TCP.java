@@ -1,8 +1,11 @@
 package nl.vu.cs.cn;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.security.InvalidParameterException;
+import java.util.Arrays;
+
 import nl.vu.cs.cn.IP.IpAddress;
 
 /**
@@ -34,6 +37,7 @@ public class TCP {
     	 */
     	private Socket() {
 			control = new TcpControlBlock();
+			recv_IP_packet = control.createIPPacket();
     	}
 
     	/**
@@ -44,8 +48,17 @@ public class TCP {
     	 */
         private Socket(int port) throws IOException {
         	control = new TcpControlBlock(ip.getLocalAddress(),	port);
+        	recv_IP_packet = control.createIPPacket();
 		}
 
+        /**
+         * Returns the TcpControlBlock. This method is only used for manipulation of the TcpControlBlock for testing purposes.
+         * @return
+         */
+        public TcpControlBlock getTcpControlBlock() {
+        	return control;
+        }
+        
 		/**
          * Connect this socket to the specified destination and port.
          *
@@ -178,7 +191,9 @@ public class TCP {
 
             // Read from the socket here.
         	recv_tcp_packet();
-        	buf = control.tcb_data;
+        	
+        	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
+        	tcp.getPayload(buf);
             return -1;
         }
 
@@ -291,12 +306,12 @@ public class TCP {
     	/* the data for the TCP packet*/
     	byte[] data;
     	
-    	/* the length of the TCP Packet */
+    	/* the length of the TCP packet */
     	int packetLength;
     	
     	
     	/**
-    	 * Constructor used when a TCP packet has been received (for verifying the content of the received data)
+    	 * Constructor used when a IP packet has been received (for verifying the content of the received data)
     	 * @param source_IpAddress
     	 * @param destination_IpAddress
     	 * @param tcpData
@@ -491,6 +506,7 @@ public class TCP {
 			sum += (destination_ip >>> 16) & 0xFFFF;*/
 			
 			// for little-endian we have calculate a bit, but it works
+			//sum += IpAddress.htoa(source_ip);
 			sum += ((source_ip >>> 24) + ((source_ip & 0xFF0000) >>> 8) + ((source_ip & 0xFF00) >>> 8) + ((source_ip & 0xFF) << 8));
 			sum += ((destination_ip >>> 24) + ((destination_ip & 0xFF0000) >>> 8) + ((destination_ip & 0xFF00) >>> 8) + ((destination_ip & 0xFF) << 8));
 			
@@ -518,9 +534,15 @@ public class TCP {
     	/**
     	 * Returns the whole TCP packet as byte array
     	 */
-    	public byte[] getByteArray()
-    	{
+    	public byte[] getByteArray() {
     		return rawData.array();
+    	}
+    	
+    	public void getPayload(byte[] payload) {
+    		int payloadLength = packetLength - HEADER_SIZE;
+    		for (int i = 0; i < payloadLength; i++) {
+    			payload[i] = rawData.get(HEADER_SIZE+i);
+    		}
     	}
     	
     	/**
@@ -628,6 +650,8 @@ public class TCP {
 			rawData.putShort(14, windowSize);
 			this.calculateChecksum(false);
 		}
+		
+		
     }
     
     
@@ -812,21 +836,20 @@ public class TCP {
     	 * @param offset
     	 * @param len
     	 * @param setFIN
-    	 * @return
-    	 * @throws IOException
+    	 * @return a new created TCP packet
     	 */
     	public TcpPacket createTcpPacket(byte[] buf, int offset, int len, boolean setFIN) {
             
     		// sending data is only allowed, when the connection is in a specific state
     		// TODO: extend the possible cases (CLOSING connections) and return null
-    		if (len > 0) {
+    		/*if (len > 0) {
     			if (tcb_state == ConnectionState.S_CLOSED || 
     				tcb_state == ConnectionState.S_LISTEN)  {
     				
     				Logging.getInstance().LogConnectionError(this, "You have to establish a connection first, before sending data is allowed!");
     				return null;
     			}
-    		}
+    		}*/
     			
     		
         	TcpPacket next_packet = new TCP.TcpPacket(
@@ -854,7 +877,6 @@ public class TCP {
         		}
         		next_packet.setFIN_Flag(true);
         	}
-        		
         	
         	return next_packet;
         }
@@ -896,11 +918,44 @@ public class TCP {
         			IP.TCP_PROTOCOL,
         			1,	// TODO: change this
         			ip_data,
-        			ip_data.length);		// TODO: check this later
+        			ip_data.length);
     		
     		return ip;
     	}
     	
+    	
+    	/**
+    	 * Creates an empty IP packet
+    	 * @return
+    	 */
+    	public IP.Packet createIPPacket() {
+    		
+    		IP.Packet ip = new IP.Packet (tcb_remote_ip_addr,
+        			IP.TCP_PROTOCOL,
+        			1,	// TODO: change this
+        			new byte[] {},
+        			0);
+    		
+    		return ip;
+    	}
+    	    	
+    	
+    	/**
+    	 * This method is only used for manipulation of the TcpControlBlock from outside for testing purposes.
+    	 * @param ipAddress
+    	 */
+    	public void setRemoteIPAddressForTesting(int ipAddress) {
+    		tcb_remote_ip_addr = ipAddress;
+    	}
+    	
+    	
+    	/**
+    	 * This method is only used for manipulation of the TcpControlBlock from outside for testing purposes.
+    	 * @param connectionStatus
+    	 */
+    	public void setConnectionStateForTesting(ConnectionState connectionStatus) {
+    		tcb_state = connectionStatus;
+    	}
     }
     
     
@@ -915,7 +970,7 @@ public class TCP {
     /**
      * Constructs a TCP stack for the given virtual address.
      * The virtual address for this TCP stack is then
-     * 192.168.1.address.
+     * 192.168.0.address.
      *
      * @param address The last octet of the virtual IP address 1-254.
      * @throws IOException if the IP stack fails to initialize.

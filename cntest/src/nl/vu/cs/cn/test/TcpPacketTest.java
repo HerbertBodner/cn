@@ -2,6 +2,8 @@ package nl.vu.cs.cn.test;
 
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+
 import nl.vu.cs.cn.IP.IpAddress;
 import nl.vu.cs.cn.TCP;
 import nl.vu.cs.cn.TCP.TcpPacket;
@@ -98,8 +100,8 @@ public class TcpPacketTest extends AndroidTestCase {
 	
 
 
-	/*
-	public void testT013BasicTCPsendRecv() {
+	
+	public void testT013BasicTCPSendRecv() {
 		TCP tcp1 = null;
 		TCP tcp2 = null;
 		
@@ -109,14 +111,21 @@ public class TcpPacketTest extends AndroidTestCase {
 			TCP.Socket sender = tcp1.socket();
 			TCP.Socket receiver = tcp2.socket(80);
 			
-			byte[] buf = ByteBuffer.allocate(10).array();
-			sender.write("test".getBytes(), 0, 4);
+			// set the remote IP address for the sender (this has to be done manually, because there is no connection setup)
+			sender.getTcpControlBlock().setRemoteIPAddressForTesting(IpAddress.getAddress("192.168.0.2").getAddress());
+			
+			byte[] payload = "test".getBytes();
+			byte[] buf = ByteBuffer.allocate(4).array();
+			sender.write(payload, 0, 4);
 			receiver.read(buf, 0, 10);
-			assertEquals("test".getBytes(), buf);
+			
+			for(int i = 0; i<payload.length; i++)
+				assertEquals(payload[i], buf[i]);
+			
 		} catch (Exception e) {
 			fail(e.getMessage() + "\n\n" + e.getStackTrace());
 		}
 		
-	}*/
+	}
 	
 }
