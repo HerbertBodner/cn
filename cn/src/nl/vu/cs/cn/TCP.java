@@ -5,6 +5,8 @@ import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.security.InvalidParameterException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Random;
 
 import nl.vu.cs.cn.IP.IpAddress;
 
@@ -17,6 +19,7 @@ public class TCP {
 	/** The underlying IP stack for this TCP stack. */
     private IP ip;
 
+    
     /**
      * This class represents a TCP socket.
      *
@@ -47,6 +50,8 @@ public class TCP {
     	 * @throws IOException 
     	 */
         private Socket(int port) throws IOException {
+
+        	// TODO: HB: We can check if the port is not already used by another TCP connection (therefore we can create a HashMap<Number, TcpControlBlock> to store the currently active TCP connections)
         	control = new TcpControlBlock(ip.getLocalAddress(),	port);
         	recv_IP_packet = control.createIPPacket();
 		}
@@ -75,10 +80,10 @@ public class TCP {
         	
         	// get a new free local Port
         	IpAddress localIp = ip.getLocalAddress();
-        	int localPort = TcpConnections.getFreeLocalPort(localIp, control);
-        	if (localPort < 0) {
-        		return false;
-        	}
+        	Random rand = new Random();
+        	int localPort = rand.nextInt( ConnectionUtils.MAX16BIT_VALUE-1024) + 1024;
+        	
+        	
         	
         	// we have to be in state CLOSED, when connect is called, otherwise something went wrong and we return false
         	if (control.tcb_state != ConnectionState.S_CLOSED) {
@@ -115,12 +120,34 @@ public class TCP {
         		return false;
         	}
         	
-    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
-    		if (!control.verifyReceivedPacket(this.recv_IP_packet)) {
+    		// verify the received packet
+    		TcpPacket synack_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, false); 
+    		if (synack_tcpPacket == null) {
     			Logging.getInstance().LogTcpPacketError("Invalid received SYN/ACK packet, 'connect' aborted!");
     			control.resetConnection(ConnectionState.S_CLOSED);
     			return false;
     		}
+    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
+    		if (!control.omitConnectionState(synack_tcpPacket)) {
+    			control.resetConnection(ConnectionState.S_CLOSED);
+    			return false;
+    		}
+    		
+    		
+    		// Create and send ACK package
+    		TcpPacket ack_packet = control.createTcpPacket(null, 0, 0, false);
+    		if (ack_packet == null) {
+    			control.resetConnection(ConnectionState.S_CLOSED);
+    			return false;
+    		}
+    		ack_packet.setACK_Flag(true);
+        	this.sent_IP_packet = control.createIPPacket(ack_packet);
+        	if (!send_tcp_packet()) {
+        		Logging.getInstance().LogTcpPacketError("Sending ACK packet failed, 'connect' aborted!");
+        		control.resetConnection(ConnectionState.S_CLOSED);
+        		return false;
+        	}
+    		
         	
             return true;
         }
@@ -131,7 +158,7 @@ public class TCP {
          */
         public void accept() {
 
-        	// we have to be in state LISTEN state, when accept is called, otherwise something went wrong and we return
+        	// we have to be in state LISTEN, when accept is called, otherwise something went wrong and we return
         	if (control.tcb_state != ConnectionState.S_LISTEN) {
         		Logging.getInstance().LogConnectionError(control, "TCP has to be in LISTEN state, when calling method 'accept'!");
         		return;
@@ -142,12 +169,20 @@ public class TCP {
         		Logging.getInstance().LogTcpPacketError("Receiving SYN packet failed, 'accept' aborted!");
         		return;
         	}
+        	       	
         	
-        	// check if the received packet has the correct flags (if everything is OK, then the SYN_RCVD state is set within the method)
-    		if (!control.verifyReceivedPacket(this.recv_IP_packet)) {
+        	// verify the packet
+        	TcpPacket syn_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, true);
+    		if (syn_tcpPacket == null) {
     			Logging.getInstance().LogTcpPacketError("Invalid received SYN packet, 'accept' aborted!");
     			return;
     		}
+    		
+    		// check if the received packet has the correct flags (if everything is OK, then the SYN_RCVD state is set within the method)
+    		if (!control.omitConnectionState(syn_tcpPacket)) {
+    			return;
+    		}
+    		
         	
     		// Create and send SYN/ACK package
     		TcpPacket synack_packet = control.createTcpPacket(null, 0, 0, false);
@@ -169,9 +204,16 @@ public class TCP {
         		return;
         	}
         	
-    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
-    		if (!control.verifyReceivedPacket(this.recv_IP_packet)) {
+    		// verify the received packet
+    		TcpPacket ack_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, false);
+    		if (ack_tcpPacket == null) {
     			Logging.getInstance().LogTcpPacketError("Invalid received ACK packet, 'accept' aborted!");
+    			control.resetConnection(ConnectionState.S_LISTEN);
+    			return;
+    		}
+    		
+    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
+    		if (!control.omitConnectionState(ack_tcpPacket)) {
     			control.resetConnection(ConnectionState.S_LISTEN);
     			return;
     		}
@@ -194,7 +236,7 @@ public class TCP {
         	
         	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
         	tcp.getPayload(buf);
-            return -1;
+            return 1;
         }
 
         /**
@@ -369,13 +411,17 @@ public class TCP {
 			}
 			
 			
-			if (payload.length > MAX_PAYLOAD_LENGTH)
+			if (payload != null && payload.length > MAX_PAYLOAD_LENGTH)
 			{
 				throw new InvalidParameterException("Payload length is only allowed up to " + MAX_PAYLOAD_LENGTH + " Bytes.");
 			}
 
-    		// Reserved space for the TCP packet
-    		rawData = ByteBuffer.allocate(HEADER_SIZE + payload.length);
+			// Reserve space for the TCP packet
+			int payloadLength = 0;
+			if (payload != null)
+				payloadLength = payload.length;
+    		
+    		rawData = ByteBuffer.allocate(HEADER_SIZE + payloadLength);
 
 			fillTcpPacket(source_port, destination_port, seq_nr, ack_nr, payload);
     	}
@@ -440,14 +486,16 @@ public class TCP {
     		// Urgent pointer: is always 0, because we the urgent flag is not supported
     		rawData.putShort(18, (short)0);
     		
-    		// Payload, set the payload
-    		
-    		rawData.position(HEADER_SIZE);
-    		rawData.put(payload);
-    		// TODO: debug put methods, they do not seem to work ok
-    		
+    		// Set the payload
+    		int payloadLength = 0;
+    		if (payload != null) {
+    			payloadLength = payload.length;
+    			rawData.position(HEADER_SIZE);
+        		rawData.put(payload);
+    		}
+    		   		
     		// the length of the TCP packet is the length of the payload plus the 20 byte TCP header (in Bytes)
-    		packetLength = payload.length + HEADER_SIZE;
+    		packetLength = payloadLength + HEADER_SIZE;
     	}
     	
     	
@@ -505,13 +553,12 @@ public class TCP {
 			sum += destination_ip & 0xFFFF;
 			sum += (destination_ip >>> 16) & 0xFFFF;*/
 			
-			// for little-endian we have calculate a bit, but it works
-			//sum += IpAddress.htoa(source_ip);
+			// for little-endian we transform it to big-endian
 			sum += ((source_ip >>> 24) + ((source_ip & 0xFF0000) >>> 8) + ((source_ip & 0xFF00) >>> 8) + ((source_ip & 0xFF) << 8));
 			sum += ((destination_ip >>> 24) + ((destination_ip & 0xFF0000) >>> 8) + ((destination_ip & 0xFF00) >>> 8) + ((destination_ip & 0xFF) << 8));
 			
 			
-			// add IP protocol nr 6
+			// add TCP protocol nr 6
 			sum += IP.TCP_PROTOCOL;
 			
 			// add packet length
@@ -532,17 +579,55 @@ public class TCP {
     	
     	
     	/**
-    	 * Returns the whole TCP packet as byte array
+    	 * Calculates the checksum and returns the whole TCP packet as byte array
     	 */
     	public byte[] getByteArray() {
+			
+    		// recompute the checksum
+			this.calculateChecksum(false);
+			
     		return rawData.array();
     	}
     	
+    	
+    	/**
+    	 * Saves the payload of the package in the given variable 'payload'.
+    	 * @param payload
+    	 */
     	public void getPayload(byte[] payload) {
     		int payloadLength = packetLength - HEADER_SIZE;
     		for (int i = 0; i < payloadLength; i++) {
     			payload[i] = rawData.get(HEADER_SIZE+i);
     		}
+    	}
+    	
+    	
+    	/**
+    	 * @return the source port of the TCP packet
+    	 */
+    	public int getSourcePort() {
+    		return rawData.getInt(0) >> 16;
+    	}
+    	
+    	/**
+    	 * @return the destination port of the TCP packet
+    	 */
+    	public int getDestinationPort() {
+    		return (rawData.getInt(0) & 0xFFFF);
+    	}
+    	
+    	/**
+    	 * @return the SEQ number of the TCP packet
+    	 */
+    	public long getSEQNumber() {
+    		return (rawData.getLong(4) >> 32);
+    	}
+    	
+    	/**
+    	 * @return the ACK number of the TCP packet
+    	 */
+    	public long getACKNumber() {
+    		return (rawData.getLong(8) >> 32);
     	}
     	
     	/**
@@ -630,9 +715,6 @@ public class TCP {
 			
 			// write all flags back to the raw data
 			rawData.put(13, flags);
-			
-			// recompute the checksum
-			this.calculateChecksum(false);
 		}
 		
 		/**
@@ -683,6 +765,7 @@ public class TCP {
     	/** Their port number. */
     	int tcb_remote_port;
     	
+    	
     	/** What we know they know. */
     	long tcb_local_sequence_num;
     	
@@ -708,13 +791,15 @@ public class TCP {
     	
     	
     	
-    	/** constructor called by client */
+    	/**
+    	 * Constructor called by client
+    	 */
     	public TcpControlBlock() {
     		tcb_state = ConnectionState.S_CLOSED;
     		
-    		//TODO set the SEQ and ACK
-    		tcb_local_sequence_num = 4294967294l;
-    		tcb_local_expected_ack = 4294967293l;
+    		// SEQ and ACK are set to default values
+    		tcb_local_sequence_num = 0; //-1;
+    		tcb_local_expected_ack = 0; //-1;
     	}
     	
     	
@@ -737,96 +822,140 @@ public class TCP {
     			throw new IOException("Invalid local port!");
     		}
 
-    		// check if local port is not already used by another TCP connection
-    		if (!TcpConnections.isPortFree(local_ip, local_port)) {
-    			throw new IOException("Port '" + local_port + "' for IpAddress '" + local_ip.toString() + "' is already in use!");
-    		}
-    		tcb_remote_port = local_port;
+    		tcb_local_port = local_port;
     		   		
-    		//TODO set the SEQ and ACK (randomly?)
-    		tcb_local_sequence_num = 4294967294l;
-    		tcb_local_expected_ack = 4294967293l;
+    		// SEQ and ACK are set to default values
+    		tcb_local_sequence_num = 0; //-1;
+    		tcb_local_expected_ack = 0; //-1;
     		
     		// set the connection status to LISTEN for the server
     		tcb_state = ConnectionState.S_LISTEN;
     	}
     	
     	/**	
-    	 * Verifies a received TcpPacket by checking the flags, SEQ/ACK number and changing the state of the connection.
-    	 * It returns true if the packet was successful verified and a ACK packet can be sent back or a ACK packet was received.
-    	 * @param tcpPacket
-    	 * @return
+    	 * Verifies a received Packet by checking the IP, port, SEQ/ACK number and returns a TcpPacket if everything is OK, otherwise null. 
+    	 * @param ipPacket: the received IP packet
+    	 * @param setRemoteIPAndPort: this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects
+    	 * @return a TcpPacket if everything is OK, otherwise null.
     	 */
-    	public boolean verifyReceivedPacket(IP.Packet ipPacket) {
+    	public TcpPacket verifyReceivedPacket(IP.Packet ipPacket, boolean setRemoteIPAndPort) {
 
+    		// set the remote_address and the remote port 
+    		// (this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects)
+    		if (setRemoteIPAndPort) {
+    			tcb_remote_ip_addr = ipPacket.source;
+    		}
+        	
+    		
     		// check, if the received IP packet has the expected IP addresses 
     		// this would also be detected by verifyChecksum of the TcpPacket, but here we produce a better error message 
     		if (ipPacket.destination != tcb_local_ip_addr) {
     			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong destination IP address "
     					+ "(expectedIP='" + IpAddress.htoa(tcb_local_ip_addr) + "', "
     					+ "packet-destination-address='" + IpAddress.htoa(ipPacket.destination) + "')");
-    			return false;
+    			return null;
     		}
     		if (ipPacket.source != tcb_remote_ip_addr) {
     			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong source IP address "
     					+ "(expectedIP='" + IpAddress.htoa(tcb_remote_ip_addr) + "', "
     					+ "packet-source-address='" + IpAddress.htoa(ipPacket.source) + "')");
-    			return false;
+    			return null;
     		}
     			
     		// verify protocol version
-    		if (ipPacket.protocol != 4) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong protocol version (expected='2', actual='" + ipPacket.protocol +"').");
-    			return false;
+    		if (ipPacket.protocol != IP.Packet.IP_PROTOCOL_V4) {
+    			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong protocol version (expected='"+ IP.Packet.IP_PROTOCOL_V4 +"', actual='" + ipPacket.protocol +"').");
+    			return null;
     		}
     		
     		//TODO: verify the ID of the IP packet?
     		
-    		//TODO: verify ports (this would also be detected by verifyChecksum of the TcpPacket, so it´s nice but not really necessary)
+    		
     		
     		TcpPacket tcpPacket = new TcpPacket(ipPacket.source, ipPacket.destination, ipPacket.data, ipPacket.length);
     		
+    		// set the remote_address and the remote port 
+    		// (this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects)
+    		if (setRemoteIPAndPort) {
+            	tcb_remote_port = tcpPacket.getSourcePort(); 	
+    		}
+
+        	
+        	//TODO: verify ports (this would also be detected by verifyChecksum of the TcpPacket, so it´s nice but not really necessary)
+        	
     		if (!tcpPacket.verifyChecksum()) {
     			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong checksum!");
-    			return false;
+    			return null;
     		}
+    		   		
+			// TODO: Check if the ACK number is the same as the last send SEQ number
+			/*if (tcb_local_sequence_num >= 0 && tcpPacket.getACKNumber() != tcb_local_sequence_num) {
+				Logging.getInstance().LogTcpPacketError("Wrong ACK number. Expected was '" + tcb_local_sequence_num + "', but was '" + tcpPacket.getACKNumber() + "'!");
+				return null;
+			}*/
+    				
     		
-    		// TODO check the SEQ and ACK number
+    		return tcpPacket;
+    	}
+    	
+    	
     		
+    		
+    	/**
+    	 * Change/Omit the state of the connection, depending on the current state and the flags in the received TCP packet.
+    	 * @param tcpPacket
+    	 * @return true if the packet was an expected packet, otherwise false.
+    	 */
+    	public boolean omitConnectionState(TcpPacket tcpPacket) {
     		
     		switch(tcb_state) {
-    			case S_CLOSED:
-    				Logging.getInstance().LogConnectionError(this, "Package was received during TCP was in CLOSED state!");
-    				return false;
-    				
-    			case S_SYN_SENT:
-    				if (tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
-    					// If we were in SYN_SENT state and received a valid SYN-ACK package, we go to ESTABLISHED state
-    					tcb_state = ConnectionState.S_ESTABLISHED;
-    					return true;
-    				}
-    				else {
-    					Logging.getInstance().LogTcpPacketError("Expected SYN/ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
-    				}
-    				break;
-    			
-    			case S_LISTEN:
-    				if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
-    					// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state
-    					tcb_state = ConnectionState.S_SYN_RCVD;
-    					return true;
-    				}
-    				else {
-    					Logging.getInstance().LogTcpPacketError("Expected SYN packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
-    				}
-    				break;
-    				
-    			case S_ESTABLISHED:
-    				break;
-    			
+				case S_CLOSED:
+					Logging.getInstance().LogConnectionError(this, "Package was received while TCP was in CLOSED state!");
+					return false;
+					
+				case S_SYN_SENT:
+					if (tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
+						// If we were in SYN_SENT state and received a valid SYN-ACK package, we go to ESTABLISHED state
+						tcb_state = ConnectionState.S_ESTABLISHED;
+						return true;
+					}
+					else {
+						Logging.getInstance().LogTcpPacketError("Expected SYN/ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+					}
+					break;
+				
+				case S_LISTEN:
+					if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
+						// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state
+						tcb_state = ConnectionState.S_SYN_RCVD;
+						tcb_remote_sequence_num = tcpPacket.getSEQNumber();
+						return true;
+					}
+					else {
+						Logging.getInstance().LogTcpPacketError("Expected SYN packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+					}
+					break;
+					
+				case S_SYN_RCVD:
+					if (!tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
+						// If we were in SYN_RCVD state and received a valid ACK package, we go to ESTABLISHED state
+						tcb_state = ConnectionState.S_ESTABLISHED;
+						return true;
+					}
+					else {
+						Logging.getInstance().LogTcpPacketError("Expected ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+					}
+					break;
+					
+				case S_ESTABLISHED:
+					break;
     		}
     		return false;
-    	}
+			
+		}
+    	
+    	
+
     	
     	/**
     	 * Returns a TcpPacket, which has all the flags set according to the current ConnectionState
@@ -851,6 +980,19 @@ public class TCP {
     			}
     		}*/
     			
+    		// set the SEQ/ACK before creating the TCP package	
+    		switch(tcb_state) {
+	    		case S_CLOSED:
+	    			// SYN packet: create new SEQ number, set ACK-NR to 0
+	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
+	    			tcb_remote_sequence_num = 0;
+	    			break;
+	    		case S_SYN_RCVD:
+	    			// SYN/ACK packet: use received SEQ+1 as ACK-NR
+	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
+	    			
+	    			break;
+    		}
     		
         	TcpPacket next_packet = new TCP.TcpPacket(
         			tcb_local_ip_addr,		// local IP
@@ -861,12 +1003,17 @@ public class TCP {
         			tcb_local_expected_ack,	// ACK number
         			buf);
         	
+        	// set the FLAGS and the connection state after creating the TCP package
         	switch(tcb_state) {
         		case S_CLOSED:
+        			// create SYN packet
         			next_packet.setSYN_Flag(true);
-        		case S_LISTEN:
+        			break;
+        		case S_SYN_RCVD:
+        			// create SYN/ACK packet
         			next_packet.setSYN_Flag(true);
         			next_packet.setACK_Flag(true);
+        			break;
         	}
         	
         	// check if closing connection is allowed and set FIN flag
@@ -915,7 +1062,7 @@ public class TCP {
     	public IP.Packet createIPPacket(TcpPacket tcpPacket) {
     		byte[] ip_data = tcpPacket.getByteArray();
     		IP.Packet ip = new IP.Packet (tcb_remote_ip_addr,
-        			IP.TCP_PROTOCOL,
+        			4,	// TODO: IPv4 (should we also support IPv6?)
         			1,	// TODO: change this
         			ip_data,
         			ip_data.length);
@@ -931,7 +1078,7 @@ public class TCP {
     	public IP.Packet createIPPacket() {
     		
     		IP.Packet ip = new IP.Packet (tcb_remote_ip_addr,
-        			IP.TCP_PROTOCOL,
+    				4,	// TODO: IPv4 (should we also support IPv6?)
         			1,	// TODO: change this
         			new byte[] {},
         			0);
@@ -955,6 +1102,13 @@ public class TCP {
     	 */
     	public void setConnectionStateForTesting(ConnectionState connectionStatus) {
     		tcb_state = connectionStatus;
+    	}
+    	
+    	/**
+    	 * This method is only used for check the state of the TcpControlBlock from outside for testing purposes.
+    	 */
+    	public ConnectionState getConnectionStateForTesting() {
+    		return tcb_state;
     	}
     }
     

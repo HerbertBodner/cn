@@ -45,4 +45,23 @@ public class ConnectionUtils {
 		}
 		return true;
 	}
+	
+	/**
+	 * Returns a new SEQ number, depending on the current time.
+	 * @return
+	 */
+	public static long getNewSequenceNumber() {
+		return System.currentTimeMillis() % ConnectionUtils.MAX32BIT_VALUE;
+	}
+	
+	/**
+	 * Returns the next valid SEQ number, depending to the current SEQ and the size of the packet (in byte)
+	 * @param currentSEQ
+	 * @param amountOfBytes
+	 * @return
+	 */
+	public static long getNextSequenceNumber(long currentSEQ, long amountOfBytes) {
+		return (currentSEQ + amountOfBytes) % ConnectionUtils.MAX32BIT_VALUE;
+	
+	}
 }

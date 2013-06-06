@@ -161,6 +161,12 @@ public class IP {
      *
      */
     public static final class Packet {
+    	
+    	/**
+    	 * IPv4
+    	 */
+    	static final int IP_PROTOCOL_V4 = 4;
+    	
     	/** The source address for the packet. Note the value is stored little-endian. */
         int source;
         /** The destination address for the packet. Note the value is stored little-endian. */

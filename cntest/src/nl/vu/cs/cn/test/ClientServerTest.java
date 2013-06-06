@@ -2,6 +2,7 @@ package nl.vu.cs.cn.test;
 
 import java.io.IOException;
 
+import nl.vu.cs.cn.ConnectionState;
 import nl.vu.cs.cn.Logging;
 import nl.vu.cs.cn.TCP;
 import nl.vu.cs.cn.IP.IpAddress;
@@ -30,7 +31,7 @@ public class ClientServerTest extends AndroidTestCase {
 	    
 	        	int serverIP = 1;
 	    		int serverPort = 80;
-	    		String exptectedTextToReceive = "Hello world!";
+	    		byte[] exptectedTextToReceive = "Hello world!".getBytes();
 	    		
 
 				TCP tcpServer = null;
@@ -49,13 +50,17 @@ public class ClientServerTest extends AndroidTestCase {
 				// listen at serverSocketListener and accept new incoming connections
 				serverSocket.accept();
 				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[1024];
-				if (serverSocket.read(buf, 0, 1027) <= 0) {
+				if (serverSocket.read(buf, 0, 1024) <= 0) {
 					fail("Failed to read a message from the client!");
 				}
 				
-				assertEquals(exptectedTextToReceive.getBytes(), buf);
+				for(int i = 0; i<12; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
 				
 	        }
 	    });
@@ -86,8 +91,13 @@ public class ClientServerTest extends AndroidTestCase {
 				Socket clientSocket = tcpClient.socket();
 				
 				// create server IP address and connect to server
-				IpAddress serverAddress = IpAddress.getAddress("192.168.1." + serverIP);
-				clientSocket.connect(serverAddress, server_socket);
+				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
+				if (!clientSocket.connect(serverAddress, server_socket)) {
+					fail("Failure during connect to server!");
+				}
+				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -98,8 +108,8 @@ public class ClientServerTest extends AndroidTestCase {
 		
 		
 		try {
-			clientThread.join();
 			serverThread.join();
+			clientThread.join();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 			fail("Exception when joining the client and server thread: " + e.getMessage());
