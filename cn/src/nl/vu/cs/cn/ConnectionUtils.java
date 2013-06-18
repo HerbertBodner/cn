@@ -14,6 +14,17 @@ public class ConnectionUtils {
 	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It´s used to check the upper border of the seq_nr and the ack_nr. */
 	static final long MAX32BIT_VALUE = 4294967295l; 	// AA: equivalent to Integer.MAX_VALUE-Integer.MIN_VALUE
 	
+	/* the timestamp (in ms) when a sequence number was last generated */
+	static long ISN_TIMESTAMP = 0;
+	
+	/**
+	 * Initialize ISN_TIMESTAMP (initial sequence number timestamp) to current time
+	 * @param
+	 * @return
+	 */
+	public static void init() {
+		ISN_TIMESTAMP = System.currentTimeMillis();
+	}
 	
 	/**
 	 * Returns true, if the given port is within a valid range.
@@ -48,10 +59,14 @@ public class ConnectionUtils {
 	
 	/**
 	 * Returns a new SEQ number, depending on the current time.
-	 * @return
+	 * @return a pseudo-random ISN based on a timer incremented every 4 microseconds
 	 */
 	public static long getNewSequenceNumber() {
-		return System.currentTimeMillis() % ConnectionUtils.MAX32BIT_VALUE;
+		long stored_timestamp = ISN_TIMESTAMP;
+		// update timestamp
+		ISN_TIMESTAMP = System.currentTimeMillis();
+		
+		return (System.currentTimeMillis()-stored_timestamp)*4 % ConnectionUtils.MAX32BIT_VALUE;
 	}
 	
 	/**

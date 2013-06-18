@@ -263,8 +263,7 @@ public class TCP {
         }
         
         /**
-         * Closes the connection for this socket.
-         * Blocks until the connection is closed.
+         * Non-blocking method that closes the current TCP connection for writing.
          *
          * @return true unless no connection was open.
          */
@@ -279,9 +278,14 @@ public class TCP {
         		return false;
         	}
 
-        	
-        	// if we are in SYN_RCVD or ESTABLISHED state, then we sent a FIN-package
-        	// TODO
+        	// if we are in ESTABLISHED state => passive close
+        	if (this.control.tcb_state == ConnectionState.S_ESTABLISHED) {
+        		// must send back a FIN-package
+        	}
+        	// if we are in SYN_RCVD state => active close
+        	if (this.control.tcb_state == ConnectionState.S_SYN_RCVD) {
+        		
+        	}
         	
             return false;
         }
@@ -289,30 +293,98 @@ public class TCP {
         
         private boolean send_tcp_packet() {
         	
-        	// TODO: try several times, if there is an IOException at the first time? (Read the specification!)
-        	try {
-				ip.ip_send(this.sent_IP_packet);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
+        	// for a maximum of 10 retries
+        	int i=0;
+    		while (i<10) {
+	        	try {
+        			// try sending
+        			ip.ip_send(this.sent_IP_packet);
+        			// wait for ACK
+        			ip.ip_receive_timeout(recv_IP_packet, 1);
+        			// check for "garbage" packages which do not count  
+        			if (recv_IP_packet == null)
+        				continue;
+        			// decode TCP header and verify checksum
+        			TcpPacket decoded = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
+        			if (decoded.verifyChecksum()) {
+        				// check if it is FIN packet
+        				if (decoded.isFIN_Flag()) {
+        					// close connection 
+        					this.close();
+        					// send failed
+        					return false;
+        				}
+        				if (decoded.isACK_Flag())
+        					return true;	// packet sent successfully 
+        			}
+        			// bad packet received, retry => increase counter
+        			i++;
+				} catch (IOException e) {
+					e.printStackTrace();
+					// sending failed, retry => increase counter
+					i++;
+					
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+					// no ACK received within 1 second, retry => increase counter
+					i++;
+				}
+	        }
+    		// crashed one too many times, admit defeat
+			if (i>=10)
 				return false;
-			}
-        	
         	return true;
         }
         
 
         private boolean recv_tcp_packet() {
-        	try {
-				ip.ip_receive_timeout(recv_IP_packet, 1000);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				return false;
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				return false;
-			}
+        	// try reading until getting IOException or legitimate packet
+        	// for a maximum of 10 retries
+        	int i=0;
+        	while (i<10) {
+	        	try {
+	        		// wait for packet
+					ip.ip_receive_timeout(recv_IP_packet, 1);
+					// check if real packet has been received
+					if (recv_IP_packet == null)
+						continue;
+					// decode TCP header and verify checksum
+        			TcpPacket decoded = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
+        			if (!decoded.verifyChecksum())
+        				continue;	// bad packet, wait for resend
+        			// check if it is FIN packet
+        			if (decoded.isFIN_Flag()) {
+        				// close connection
+    					this.close();
+    					// recv failed
+    					return false;
+        			}
+        			// create ACK packet
+        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
+        			// make sure ACK flag is set
+        			reply.setACK_Flag(true);
+        			// create IP packet
+        			IP.Packet encoded = this.control.createIPPacket(reply);
+        			// send ACK
+        			ip.ip_send(encoded);
+        			// verify for duplicates
+        			if (this.control.tcb_remote_sequence_num == decoded.getSEQNumber())
+        				continue;	// ACK was resent, listen for next packet (do not push this duplicate to application)
+        			// update control block info
+        			this.control.tcb_remote_sequence_num = decoded.getSEQNumber();
+        			// exit current waiting loop
+        			break;
+				} catch (IOException e) {
+					// connection forcely terminated => abort
+					e.printStackTrace();
+					return false;
+				} catch (InterruptedException e) {
+					// timed out, try again
+					e.printStackTrace();
+					i++;
+				}
+        	}
+        	// successfully received
         	return true;
         }
     }
@@ -386,14 +458,14 @@ public class TCP {
     		// check for valid source port
 			if (!ConnectionUtils.isPortValid(source_port))
 			{
-				throw new InvalidParameterException("Source port number only allowed between 0 and 65535.");
+				throw new InvalidParameterException(source_port+" now valid! Source port number only allowed between 0 and 65535.");
 			}
 			
 			
 			// check for valid destination port
 			if (!ConnectionUtils.isPortValid(destination_port))
 			{
-				throw new InvalidParameterException("Destination port number only allowed between 0 and 65535.");
+				throw new InvalidParameterException(destination_port+" now valid! Destination port number only allowed between 0 and 65535.");
 			}
 
 			
@@ -789,8 +861,6 @@ public class TCP {
     	
     	
     	
-    	
-    	
     	/**
     	 * Constructor called by client
     	 */
@@ -1095,6 +1165,13 @@ public class TCP {
     		tcb_remote_ip_addr = ipAddress;
     	}
     	
+    	/**
+    	 * This method is only used for manipulation of the TcpControlBlock from outside for testing purposes.
+    	 * @param port
+    	 */
+    	public void setRemotePortForTesting(int port) {
+    		this.tcb_remote_port = port;
+    	}
     	
     	/**
     	 * This method is only used for manipulation of the TcpControlBlock from outside for testing purposes.
@@ -1110,6 +1187,8 @@ public class TCP {
     	public ConnectionState getConnectionStateForTesting() {
     		return tcb_state;
     	}
+    	
+    	
     }
     
     
@@ -1131,6 +1210,8 @@ public class TCP {
      */
     public TCP(int address) throws IOException {
         ip = new IP(address);
+        // initialize some helper values
+        ConnectionUtils.init();
     }
 
     /**
