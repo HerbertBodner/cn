@@ -67,9 +67,10 @@ public class Logging {
 	private void Log(TcpControlBlock control, String type, String msg) {
 		if (control != null && detailedLogging) {
 			msg += "; ConnectionState=" + control.tcb_state 
-					+ ", Local-SEQ=" + control.tcb_local_sequence_num 
-					+ ", Remote-SEQ=" + control.tcb_remote_sequence_num 
-					+ ", Expected-ACK=" + control.tcb_local_expected_ack; 
+					+ ", tcb_local_sequence_num=" + control.tcb_local_sequence_num 
+					+ ", tcb_local_expected_ack=" + control.tcb_local_expected_ack 
+					+ ", tcb_remote_next_expected_SEQ_num=" + control.tcb_remote_next_expected_SEQ_num 
+					+ ", tcb_remote_last_expected_SEQ_num=" + control.tcb_remote_last_expected_SEQ_num; 
 		}
 		android.util.Log.w(type, msg);
 	}

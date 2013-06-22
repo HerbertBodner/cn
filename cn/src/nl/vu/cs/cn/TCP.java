@@ -606,7 +606,7 @@ public class TCP {
     	 * @return the source port of the TCP packet
     	 */
     	public int getSourcePort() {
-    		return rawData.getInt(0) >> 16;
+    		return (rawData.getInt(0) >>> 16);
     	}
     	
     	/**
@@ -620,14 +620,21 @@ public class TCP {
     	 * @return the SEQ number of the TCP packet
     	 */
     	public long getSEQNumber() {
-    		return (rawData.getLong(4) >> 32);
+    		return (rawData.getLong(4) >>> 32);
     	}
     	
     	/**
     	 * @return the ACK number of the TCP packet
     	 */
     	public long getACKNumber() {
-    		return (rawData.getLong(8) >> 32);
+    		return (rawData.getLong(8) >>> 32);
+    	}
+    	
+    	/**
+    	 * @return the length of the payload in Byte.
+    	 */
+    	public long getPayloadLength() {
+    		return packetLength - HEADER_SIZE;
     	}
     	
     	/**
@@ -766,14 +773,19 @@ public class TCP {
     	int tcb_remote_port;
     	
     	
-    	/** What we know they know. */
+    	/** The SEQ number, which is used and increased during the creation of new TCP packets to send. */
     	long tcb_local_sequence_num;
     	
-    	/** What we want them to ack. */
+    	/** The SEQ number, which we expect them to acknowledge by an ACK packet. */
     	long tcb_local_expected_ack;
     	
-    	/** What we think they know we know. */
-    	long tcb_remote_sequence_num;
+    	
+
+    	/** The next SEQ number, which we expect from the other side. */
+    	long tcb_remote_next_expected_SEQ_num;
+    	
+    	/** The last SEQ number, which we expect from the other side. This is needed to verify the accepted receiving packet length. */
+    	long tcb_remote_last_expected_SEQ_num;
     	
     	/** Static buffer for recv data. */
     	byte tcb_data[];
@@ -887,19 +899,53 @@ public class TCP {
     			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong checksum!");
     			return null;
     		}
-    		   		
-			// TODO: Check if the ACK number is the same as the last send SEQ number
-			/*if (tcb_local_sequence_num >= 0 && tcpPacket.getACKNumber() != tcb_local_sequence_num) {
-				Logging.getInstance().LogTcpPacketError("Wrong ACK number. Expected was '" + tcb_local_sequence_num + "', but was '" + tcpPacket.getACKNumber() + "'!");
-				return null;
-			}*/
-    				
     		
+    		// VERIFY SEQ/ACK only of we are not in CLOSED or LISTEN state
+    		if (tcb_state != ConnectionState.S_CLOSED && tcb_state != ConnectionState.S_LISTEN) {
+    		
+    			if (tcb_state != ConnectionState.S_SYN_SENT && tcb_state != ConnectionState.S_SYN_RCVD) {
+	    			// Verify the SEQ number, which should be the tcb_remote_next_expected_SEQ_num
+		    		if (tcb_remote_next_expected_SEQ_num != tcpPacket.getSEQNumber()) {
+		    			Logging.getInstance().LogTcpPacketError("Wrong SEQ number. Expected was '" + tcb_remote_next_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + "'!");
+		    			return null;
+		    		}
+		    		
+		    		// Verify that the length of the packet is OK, that means the tcb_remote_last_expected_SEQ_num <= SEQnumber + payloadLength
+		    		if (tcb_remote_last_expected_SEQ_num > tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength()) {
+		    			Logging.getInstance().LogTcpPacketError("Packet too long. Expected last SEQ number should be <= '" + tcb_remote_last_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength() + "'!");
+		    			return null;
+		    		}
+    			}
+	    		
+	    		// if the received packet is an ACK packet, we have to verify the tcb_local_expected_ack
+	    		if (tcpPacket.isACK_Flag() && tcb_local_expected_ack != tcpPacket.getACKNumber()) {
+	    			Logging.getInstance().LogTcpPacketError("Wrong ACK number. Expected was '" + tcb_local_expected_ack + "', but was '" + tcpPacket.getACKNumber() + "'!");
+	    			return null;
+	    		}
+    		}
+    		
+			
     		return tcpPacket;
     	}
     	
     	
+    	/**
+    	 * The method is called after a received TcpPacket was verified successfully. 
+    	 * The method changes the tcb_remote_sequence_num.
+    	 * @param tcpPacket
+    	 */
+    	public void acceptReceivedTcpPacket(TcpPacket tcpPacket) {
     		
+    		if (tcpPacket.isACK_Flag()) {
+    			
+    			tcb_local_expected_ack = tcpPacket.getACKNumber();
+    		}
+    		
+    		tcb_remote_next_expected_SEQ_num = tcpPacket.getSEQNumber();
+    		tcb_remote_last_expected_SEQ_num = tcb_remote_next_expected_SEQ_num + TcpPacket.MAX_PAYLOAD_LENGTH;
+    	}
+    		
+    	
     		
     	/**
     	 * Change/Omit the state of the connection, depending on the current state and the flags in the received TCP packet.
@@ -926,9 +972,9 @@ public class TCP {
 				
 				case S_LISTEN:
 					if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
-						// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state
+						// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state and create a new tcb_local_sequence_num
 						tcb_state = ConnectionState.S_SYN_RCVD;
-						tcb_remote_sequence_num = tcpPacket.getSEQNumber();
+						tcb_local_sequence_num = tcpPacket.getSEQNumber();
 						return true;
 					}
 					else {
@@ -985,7 +1031,7 @@ public class TCP {
 	    		case S_CLOSED:
 	    			// SYN packet: create new SEQ number, set ACK-NR to 0
 	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
-	    			tcb_remote_sequence_num = 0;
+	    			tcb_remote_next_expected_SEQ_num = 0;
 	    			break;
 	    		case S_SYN_RCVD:
 	    			// SYN/ACK packet: use received SEQ+1 as ACK-NR
@@ -1041,7 +1087,8 @@ public class TCP {
 		    		tcb_remote_port = 0;
 		    		tcb_local_sequence_num = 0;
 		        	tcb_local_expected_ack = 0;
-		        	tcb_remote_sequence_num = 0;
+		        	tcb_remote_next_expected_SEQ_num = 0;
+		        	tcb_remote_last_expected_SEQ_num = 0;
 		        	tcb_data = null;
 		        	tcb_p_data = null; 
 		        	tcb_data_left= null;
