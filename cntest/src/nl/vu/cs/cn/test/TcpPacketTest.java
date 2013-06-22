@@ -113,6 +113,7 @@ public class TcpPacketTest extends AndroidTestCase {
 			
 			// set the remote IP address for the sender (this has to be done manually, because there is no connection setup)
 			sender.getTcpControlBlock().setRemoteIPAddressForTesting(IpAddress.getAddress("192.168.0.2").getAddress());
+			receiver.getTcpControlBlock().setRemoteIPAddressForTesting(IpAddress.getAddress("192.168.0.1").getAddress());
 			
 			byte[] payload = "test".getBytes();
 			byte[] buf = ByteBuffer.allocate(4).array();

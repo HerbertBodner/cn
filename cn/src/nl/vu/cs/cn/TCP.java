@@ -41,6 +41,7 @@ public class TCP {
     	private Socket() {
 			control = new TcpControlBlock();
 			recv_IP_packet = control.createIPPacket();
+			control.tcb_local_ip_addr = ip.getLocalAddress().getAddress();
     	}
 
     	/**
@@ -79,7 +80,6 @@ public class TCP {
         	}
         	
         	// get a new free local Port
-        	IpAddress localIp = ip.getLocalAddress();
         	Random rand = new Random();
         	int localPort = rand.nextInt( ConnectionUtils.MAX16BIT_VALUE-1024) + 1024;
         	
@@ -92,7 +92,6 @@ public class TCP {
         	}
         	
         	// set local and remote IP address and port to the TcpControlBlock control
-        	control.tcb_local_ip_addr = localIp.getAddress();
         	control.tcb_remote_ip_addr = dst.getAddress();
         	control.tcb_local_port = localPort; 
         	control.tcb_remote_port = port;
@@ -946,7 +945,7 @@ public class TCP {
         	//TODO: verify ports (this would also be detected by verifyChecksum of the TcpPacket, so it´s nice but not really necessary)
         	
     		if (!tcpPacket.verifyChecksum()) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong checksum!");
+    			Logging.getInstance().LogTcpPacketError("The received TCP packet had the wrong checksum!");
     			return null;
     		}
     		
