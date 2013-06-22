@@ -7,15 +7,19 @@ package nl.vu.cs.cn;
  */
 public class ConnectionUtils {
 	
-	/* the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper border of the source_port and destination_port. */
-	static final int MAX16BIT_VALUE = 65535;			// AA: equivalent to Short.MAX_VALUE-Short.MIN_VALUE
+	/** the maximum unsigned 16 bit value, which is 2^16 - 1. It큦 used to check the upper border of the source_port and destination_port. */
+	public static final int MAX16BIT_VALUE = 65535;			// AA: equivalent to Short.MAX_VALUE-Short.MIN_VALUE
 	
 	
-	/* the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper border of the seq_nr and the ack_nr. */
-	static final long MAX32BIT_VALUE = 4294967295l; 	// AA: equivalent to Integer.MAX_VALUE-Integer.MIN_VALUE
+	/** the maximum unsigned 32 bit value, which is 2^32 - 1. It큦 used to check the upper border of the seq_nr and the ack_nr. */
+	public static final long MAX32BIT_VALUE = 4294967295l; 	// AA: equivalent to Integer.MAX_VALUE-Integer.MIN_VALUE
 	
-	/* the timestamp (in ms) when a sequence number was last generated */
-	static long ISN_TIMESTAMP = 0;
+	/** the timestamp (in ms) when a sequence number was last generated */
+	public static long ISN_TIMESTAMP = 0;
+	
+	/** If this value has a value, which is not 0, then the method "getNewSequenceNumber" will return this value (used for testing purposes) */
+	public static long SEQUENCE_NR_STARTVALUE_FOR_TESTING = 0;
+	
 	
 	/**
 	 * Initialize ISN_TIMESTAMP (initial sequence number timestamp) to current time
@@ -62,11 +66,17 @@ public class ConnectionUtils {
 	 * @return a pseudo-random ISN based on a timer incremented every 4 microseconds
 	 */
 	public static long getNewSequenceNumber() {
+		
+		if (SEQUENCE_NR_STARTVALUE_FOR_TESTING != 0) {
+			return SEQUENCE_NR_STARTVALUE_FOR_TESTING;
+		}
+		
 		long stored_timestamp = ISN_TIMESTAMP;
 		// update timestamp
 		ISN_TIMESTAMP = System.currentTimeMillis();
 		
 		return (System.currentTimeMillis()-stored_timestamp)*4 % ConnectionUtils.MAX32BIT_VALUE;
+		
 	}
 	
 	/**
