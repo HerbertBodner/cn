@@ -368,10 +368,10 @@ public class TCP {
         			// send ACK
         			ip.ip_send(encoded);
         			// verify for duplicates
-        			if (this.control.tcb_remote_sequence_num == decoded.getSEQNumber())
+        			if (this.control.tcb_remote_next_expected_SEQ_num == decoded.getSEQNumber())
         				continue;	// ACK was resent, listen for next packet (do not push this duplicate to application)
         			// update control block info
-        			this.control.tcb_remote_sequence_num = decoded.getSEQNumber();
+        			this.control.tcb_remote_next_expected_SEQ_num = decoded.getSEQNumber();
         			// exit current waiting loop
         			break;
 				} catch (IOException e) {
