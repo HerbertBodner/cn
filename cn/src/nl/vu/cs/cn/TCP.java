@@ -299,7 +299,6 @@ public class TCP {
         			TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, true);
         			if (tcpPacket != null) {
         				
-        				// TODO: check if it is FIN packet
         				if (tcpPacket.isFIN_Flag()) {
         					// check state
         					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
@@ -1344,7 +1343,61 @@ public class TCP {
     		return tcb_state;
     	}
     	
+    	public void setLocalIPAddressForTesting(int ipAddress) {
+    		this.tcb_local_ip_addr = ipAddress;
+    	}
     	
+    	public int getLocalIPAddressForTesting() {
+    		return this.tcb_local_ip_addr;
+    	}
+    	
+    	public void setLocalPortForTesting(int port) {
+    		this.tcb_local_port = port;
+    	}
+    	
+    	public int getLocalPortForTesting() {
+    		return this.tcb_local_port;
+    	}
+    	
+    	public void setLocalSeqForTesting(long seq_num) {
+    		this.tcb_local_sequence_num = seq_num;
+    	}
+    	
+    	public long getLocalSeqForTesting() {
+    		return this.tcb_local_sequence_num;
+    	}
+    	
+    	public void setRemoteLastSeqForTesting(long seq_num) {
+    		this.tcb_remote_last_expected_SEQ_num = seq_num;
+    	}
+    	
+    	public long getRemoteLastSeqForTesting() {
+    		return this.tcb_remote_last_expected_SEQ_num;
+    	}
+    	
+    	public void setRemoteNextSeqForTesting(long seq_num) {
+    		this.tcb_remote_next_expected_SEQ_num = seq_num;
+    	}
+    	
+    	public long getRemoteNextSeqForTesting() {
+    		return this.tcb_remote_next_expected_SEQ_num;
+    	}
+    	
+    	public void setDataForTesting(byte[] data) {
+    		this.tcb_data = data;
+    	}
+    	
+    	public byte[] getDataForTesting() {
+    		return this.tcb_data;
+    	}
+    	
+    	public void setRemoteDataLeftForTesting(int[] data_left) {
+    		this.tcb_data_left = data_left;
+    	}
+    	
+    	public int[] getRemoteDataLeftForTesting() {
+    		return this.tcb_data_left;
+    	}
     }
     
     
