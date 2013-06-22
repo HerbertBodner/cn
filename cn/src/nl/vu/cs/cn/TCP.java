@@ -120,18 +120,7 @@ public class TCP {
         		return false;
         	}
         	
-    		// verify the received packet
-    		TcpPacket synack_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, false); 
-    		if (synack_tcpPacket == null) {
-    			Logging.getInstance().LogTcpPacketError("Invalid received SYN/ACK packet, 'connect' aborted!");
-    			control.resetConnection(ConnectionState.S_CLOSED);
-    			return false;
-    		}
-    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
-    		if (!control.omitConnectionState(synack_tcpPacket)) {
-    			control.resetConnection(ConnectionState.S_CLOSED);
-    			return false;
-    		}
+
     		
     		
     		// Create and send ACK package
@@ -165,24 +154,10 @@ public class TCP {
         	}
 
             // Start with the three-way handshake here.
-        	if (!recv_tcp_packet()) {
+        	if (!recv_tcp_packet(true)) {
         		Logging.getInstance().LogTcpPacketError("Receiving SYN packet failed, 'accept' aborted!");
         		return;
         	}
-        	       	
-        	
-        	// verify the packet
-        	TcpPacket syn_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, true);
-    		if (syn_tcpPacket == null) {
-    			Logging.getInstance().LogTcpPacketError("Invalid received SYN packet, 'accept' aborted!");
-    			return;
-    		}
-    		
-    		// check if the received packet has the correct flags (if everything is OK, then the SYN_RCVD state is set within the method)
-    		if (!control.omitConnectionState(syn_tcpPacket)) {
-    			return;
-    		}
-    		
         	
     		// Create and send SYN/ACK package
     		TcpPacket synack_packet = control.createTcpPacket(null, 0, 0, false);
@@ -203,20 +178,6 @@ public class TCP {
         		control.resetConnection(ConnectionState.S_LISTEN);
         		return;
         	}
-        	
-    		// verify the received packet
-    		TcpPacket ack_tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, false);
-    		if (ack_tcpPacket == null) {
-    			Logging.getInstance().LogTcpPacketError("Invalid received ACK packet, 'accept' aborted!");
-    			control.resetConnection(ConnectionState.S_LISTEN);
-    			return;
-    		}
-    		
-    		// check if the received packet has the correct flags (if everything is OK, then the ESTABLISHED state is set within the method)
-    		if (!control.omitConnectionState(ack_tcpPacket)) {
-    			control.resetConnection(ConnectionState.S_LISTEN);
-    			return;
-    		}
         }
 
         /**
@@ -304,19 +265,23 @@ public class TCP {
         			// check for "garbage" packages which do not count  
         			if (recv_IP_packet == null)
         				continue;
-        			// decode TCP header and verify checksum
-        			TcpPacket decoded = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
-        			if (decoded.verifyChecksum()) {
-        				// check if it is FIN packet
-        				if (decoded.isFIN_Flag()) {
+        			
+        			TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, true);
+        			if (tcpPacket != null) {
+        				
+        				// TODO: check if it is FIN packet
+        				if (tcpPacket.isFIN_Flag()) {
         					// close connection 
         					this.close();
         					// send failed
         					return false;
         				}
-        				if (decoded.isACK_Flag())
-        					return true;	// packet sent successfully 
+
+        				if (tcpPacket.isACK_Flag()) {
+    		    			return true;	// packet send and ACK received successfully
+    		    		}
         			}
+		    		
         			// bad packet received, retry => increase counter
         			i++;
 				} catch (IOException e) {
@@ -336,8 +301,11 @@ public class TCP {
         	return true;
         }
         
-
         private boolean recv_tcp_packet() {
+        	return recv_tcp_packet(false);
+        }
+
+        private boolean recv_tcp_packet(boolean setRemoteIPAndPort) {
         	// try reading until getting IOException or legitimate packet
         	// for a maximum of 10 retries
         	int i=0;
@@ -348,17 +316,31 @@ public class TCP {
 					// check if real packet has been received
 					if (recv_IP_packet == null)
 						continue;
-					// decode TCP header and verify checksum
-        			TcpPacket decoded = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
-        			if (!decoded.verifyChecksum())
-        				continue;	// bad packet, wait for resend
-        			// check if it is FIN packet
-        			if (decoded.isFIN_Flag()) {
-        				// close connection
+					
+					// verify the packet
+		        	TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, setRemoteIPAndPort);
+		    		if (tcpPacket == null) {
+		    			continue; // bad packet, wait for resend
+		    		}
+		    		
+    				// TODO: check if it is FIN packet
+    				if (tcpPacket.isFIN_Flag()) {
+    					// close connection 
     					this.close();
-    					// recv failed
+    					// send failed
     					return false;
-        			}
+    				}
+
+
+		    		// check if the received packet has the correct flags
+		    		if (!control.omitConnectionState(tcpPacket)) {
+		    			return false; // correct, but unexpected packet -> don´t wait for resend, just return false
+		    		}
+		    		
+		    		// accept received TCP packet
+		    		control.acceptReceivedTcpPacket(tcpPacket);
+					
+					
         			// create ACK packet
         			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
         			// make sure ACK flag is set
@@ -368,10 +350,10 @@ public class TCP {
         			// send ACK
         			ip.ip_send(encoded);
         			// verify for duplicates
-        			if (this.control.tcb_remote_next_expected_SEQ_num == decoded.getSEQNumber())
+        			/*if (this.control.tcb_remote_next_expected_SEQ_num == decoded.getSEQNumber())
         				continue;	// ACK was resent, listen for next packet (do not push this duplicate to application)
         			// update control block info
-        			this.control.tcb_remote_next_expected_SEQ_num = decoded.getSEQNumber();
+        			this.control.tcb_remote_next_expected_SEQ_num = decoded.getSEQNumber();*/
         			// exit current waiting loop
         			break;
 				} catch (IOException e) {
@@ -950,8 +932,6 @@ public class TCP {
     			return null;
     		}
     		
-    		//TODO: verify the ID of the IP packet?
-    		
     		
     		
     		TcpPacket tcpPacket = new TcpPacket(ipPacket.source, ipPacket.destination, ipPacket.data, ipPacket.length);
@@ -966,13 +946,14 @@ public class TCP {
         	//TODO: verify ports (this would also be detected by verifyChecksum of the TcpPacket, so it´s nice but not really necessary)
         	
     		if (!tcpPacket.verifyChecksum()) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong checksum!");
+    			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong checksum!");
     			return null;
     		}
     		
     		// VERIFY SEQ/ACK only of we are not in CLOSED or LISTEN state
     		if (tcb_state != ConnectionState.S_CLOSED && tcb_state != ConnectionState.S_LISTEN) {
     		
+    			// don´t verify SEQ number during connection setup
     			if (tcb_state != ConnectionState.S_SYN_SENT && tcb_state != ConnectionState.S_SYN_RCVD) {
 	    			// Verify the SEQ number, which should be the tcb_remote_next_expected_SEQ_num
 		    		if (tcb_remote_next_expected_SEQ_num != tcpPacket.getSEQNumber()) {
@@ -981,8 +962,8 @@ public class TCP {
 		    		}
 		    		
 		    		// Verify that the length of the packet is OK, that means the tcb_remote_last_expected_SEQ_num <= SEQnumber + payloadLength
-		    		if (tcb_remote_last_expected_SEQ_num > tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength()) {
-		    			Logging.getInstance().LogTcpPacketError("Packet too long. Expected last SEQ number should be <= '" + tcb_remote_last_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength() + "'!");
+		    		if (tcb_remote_last_expected_SEQ_num < tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength()) {
+		    			Logging.getInstance().LogTcpPacketError("Packet too long. Expected last SEQ num should be <= '" + tcb_remote_last_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength() + "'!");
 		    			return null;
 		    		}
     			}
@@ -1001,7 +982,7 @@ public class TCP {
     	
     	/**
     	 * The method is called after a received TcpPacket was verified successfully. 
-    	 * The method changes the tcb_remote_sequence_num.
+    	 * The method changes the SEQ and/or ACK numbers of the TcpControlblock.
     	 * @param tcpPacket
     	 */
     	public void acceptReceivedTcpPacket(TcpPacket tcpPacket) {
@@ -1044,7 +1025,7 @@ public class TCP {
 					if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
 						// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state and create a new tcb_local_sequence_num
 						tcb_state = ConnectionState.S_SYN_RCVD;
-						tcb_local_sequence_num = tcpPacket.getSEQNumber();
+						tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 						return true;
 					}
 					else {
@@ -1118,6 +1099,9 @@ public class TCP {
         			tcb_local_sequence_num,	// SEQ number
         			tcb_local_expected_ack,	// ACK number
         			buf);
+        	
+        	// increase the tcb_local_sequence_num
+        	tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, len);
         	
         	// set the FLAGS and the connection state after creating the TCP package
         	switch(tcb_state) {
