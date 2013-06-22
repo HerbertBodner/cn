@@ -246,7 +246,7 @@ public class TCP {
         		// go to LAST_ACK state
         		control.tcb_state = ConnectionState.S_LAST_ACK;
         		// must send the client a FIN
-        		TcpPacket close_response = control.createTcpPacket(null, 0, 1, true);
+        		TcpPacket close_response = control.createTcpPacket("".getBytes(), 0, 0, true);
         		this.sent_IP_packet = control.createIPPacket(close_response);
         		// we don't check for the result of the send because we close the connection anyway
         		send_tcp_packet();
@@ -261,7 +261,7 @@ public class TCP {
         		// go to FIN_WAIT1 state
         		control.tcb_state = ConnectionState.S_FIN_WAIT_1;
         		// must send the client a FIN
-        		TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
+        		TcpPacket close_response = control.createTcpPacket("".getBytes(), 0, 0, true);
         		this.sent_IP_packet = control.createIPPacket(close_response);
         		// go to CLOSING state
         		control.tcb_state = ConnectionState.S_CLOSING;
@@ -269,7 +269,7 @@ public class TCP {
         		// go to TIME_WAIT state
         		control.tcb_state = ConnectionState.S_TIME_WAIT;
         		// must send the client an ACK
-        		close_response = control.createTcpPacket(null, 0, 0, false);
+        		close_response = control.createTcpPacket("".getBytes(), 0, 0, false);
         		this.sent_IP_packet = control.createIPPacket(close_response);
         		send_tcp_packet();
         		// close connection
@@ -1241,10 +1241,12 @@ public class TCP {
         	
         	// check if closing connection is allowed and set FIN flag
         	if (setFIN) {
+        		/*
         		if (tcb_state != ConnectionState.S_ESTABLISHED) {
         			Logging.getInstance().LogTcpPacketError("Only established connection can be closed! (ConnectionState='" + tcb_state + "').");
         			return null;
         		}
+        		*/
         		next_packet.setFIN_Flag(true);
         	}
         	

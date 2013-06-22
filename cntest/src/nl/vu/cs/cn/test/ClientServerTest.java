@@ -2,6 +2,8 @@ package nl.vu.cs.cn.test;
 
 import java.io.IOException;
 
+import junit.framework.Assert;
+
 import nl.vu.cs.cn.ConnectionState;
 import nl.vu.cs.cn.ConnectionUtils;
 import nl.vu.cs.cn.Logging;
@@ -221,6 +223,84 @@ public class ClientServerTest extends AndroidTestCase {
 			fail("Exception when joining the client and server thread: " + e.getMessage());
 		}
 		
+	}
+	
+	public void testT023SimpleCloseConnection() {
+		// START SERVER in a thread
+		Thread serverThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test server");
+	    
+	        	int serverIP = 1;
+	    		int serverPort = 80;
+	    		byte[] exptectedTextToReceive = "Established".getBytes();
+				Socket serverSocket = getServerSocket(serverIP, serverPort);
+				
+				// listen at serverSocketListener and accept new incoming connections
+				serverSocket.accept();
+				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] buf = new byte[1024];
+				if (serverSocket.read(buf, 0, 1024) <= 0) {
+					fail("Failed to read a message from the client!");
+				}
+				
+				for(int i = 0; i<11; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
+				
+				// connection state should be CLOSED
+				//Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+	        }
+	    });
+		serverThread.start();
+		
+		
+		
+	    // START CLIENT in a thread
+		Thread clientThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test client");
+	    	    
+	        	int serverIP = 1;
+	        	int clientIP = 2;
+	        	int server_socket = 80;
+	        	String textToSend = "Established";
+	        	
+				Socket clientSocket = getClientSocket(clientIP);
+				
+				// create server IP address and connect to server
+				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
+				if (!clientSocket.connect(serverAddress, server_socket)) {
+					fail("Failure during connect to server!");
+				}
+				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] textByteArray = textToSend.getBytes();
+				clientSocket.write(textByteArray, 0, textByteArray.length);
+				
+				// close connection
+				clientSocket.close();
+				
+				// connection state should be CLOSED
+				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+	        }
+		});
+		clientThread.start();
+		
+		
+		try {
+			serverThread.join();
+			clientThread.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			fail("Exception when joining the client and server thread: " + e.getMessage());
+		}
 	}
 	
 }
