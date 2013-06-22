@@ -1,7 +1,7 @@
 package nl.vu.cs.cn;
 
 /**
- * This class contains some useful functions for checking ranges of different fields (port, SEQ/ACK number)
+ * This class contains some useful functions for checking ranges of different fields (port, SEQ/ACK number).
  * @author Herbert Bodner, Alexandru Assandei
  *
  */
