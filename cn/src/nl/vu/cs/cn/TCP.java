@@ -225,30 +225,60 @@ public class TCP {
         
         /**
          * Non-blocking method that closes the current TCP connection for writing.
+         * Handles connection tear-down requested by the application, not by the peer (via FIN packet).
          *
          * @return true unless no connection was open.
          */
         public boolean close() {
         	
+        	// CASE 0: "phantom" close
         	// if we are in CLOSED, SYN_SENT or LISTEN state, then we go to CLOSE state and return false
         	if (control.tcb_state == ConnectionState.S_CLOSED ||
         			control.tcb_state == ConnectionState.S_SYN_SENT ||
-        			control.tcb_state == ConnectionState.S_LISTEN) {
+        			control.tcb_state == ConnectionState.S_LISTEN ||
+        			control.tcb_state == ConnectionState.S_TIME_WAIT) {
         		Logging.getInstance().LogConnectionInformation(control, "TCP connection was not established, when calling method 'close'!");
         		control.resetConnection(ConnectionState.S_CLOSED);
         		return false;
         	}
 
-        	// if we are in ESTABLISHED state => passive close
-        	if (this.control.tcb_state == ConnectionState.S_ESTABLISHED) {
-        		// must send back a FIN-package
+        	// CASE 1: passive close (if we are in ESTABLISHED state)
+        	if (this.control.tcb_state == ConnectionState.S_CLOSE_WAIT) {
+        		// go to LAST_ACK state
+        		control.tcb_state = ConnectionState.S_LAST_ACK;
+        		// must send the client a FIN
+        		TcpPacket close_response = control.createTcpPacket(null, 0, 1, true);
+        		this.sent_IP_packet = control.createIPPacket(close_response);
+        		// we don't check for the result of the send because we close the connection anyway
+        		send_tcp_packet();
+        		// close connection
+        		Logging.getInstance().LogConnectionInformation(control, "TCP connection was PASSIVELY closed!");
+        		control.resetConnection(ConnectionState.S_CLOSED);
         	}
-        	// if we are in SYN_RCVD state => active close
-        	if (this.control.tcb_state == ConnectionState.S_SYN_RCVD) {
-        		
+
+        	// CASE 2: active close (if we are in SYN_RCVD state)
+        	if (this.control.tcb_state == ConnectionState.S_SYN_RCVD ||
+        			this.control.tcb_state == ConnectionState.S_ESTABLISHED) {
+        		// go to FIN_WAIT1 state
+        		control.tcb_state = ConnectionState.S_FIN_WAIT_1;
+        		// must send the client a FIN
+        		TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
+        		this.sent_IP_packet = control.createIPPacket(close_response);
+        		// go to CLOSING state
+        		control.tcb_state = ConnectionState.S_CLOSING;
+        		send_tcp_packet();
+        		// go to TIME_WAIT state
+        		control.tcb_state = ConnectionState.S_TIME_WAIT;
+        		// must send the client an ACK
+        		close_response = control.createTcpPacket(null, 0, 0, false);
+        		this.sent_IP_packet = control.createIPPacket(close_response);
+        		send_tcp_packet();
+        		// close connection
+        		Logging.getInstance().LogConnectionInformation(control, "TCP connection was ACTIVELY closed!");
+        		control.resetConnection(ConnectionState.S_CLOSED);
         	}
         	
-            return false;
+            return true;
         }
         
         
@@ -271,8 +301,47 @@ public class TCP {
         				
         				// TODO: check if it is FIN packet
         				if (tcpPacket.isFIN_Flag()) {
-        					// close connection 
-        					this.close();
+        					// check state
+        					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
+        						// passive close
+        						control.tcb_state = ConnectionState.S_CLOSE_WAIT;
+        						// create ACK packet
+        	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
+        	        			// make sure ACK flag is set
+        	        			reply.setACK_Flag(true);
+        	        			// create IP packet
+        	        			IP.Packet encoded = this.control.createIPPacket(reply);
+        	        			// send ACK
+        	        			ip.ip_send(encoded);
+        	        			// close connection 
+            					this.close();
+        					}
+        					else if (control.tcb_state == ConnectionState.S_ESTABLISHED ||
+        							control.tcb_state == ConnectionState.S_SYN_RCVD) {
+        						// active close
+        						control.tcb_state = ConnectionState.S_FIN_WAIT_1;
+        						// create FIN+ACK packet
+        	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, true);
+        	        			// make sure ACK flag is set
+        	        			reply.setACK_Flag(true);
+        	        			// create IP packet
+        	        			IP.Packet encoded = this.control.createIPPacket(reply);
+        	        			// send FIN+ACK
+        	        			ip.ip_send(encoded);
+        	        			// go to TIME_WAIT state
+        	        			control.tcb_state = ConnectionState.S_TIME_WAIT;
+        	        			// wait for ACK packet (twice longer than normal)
+        	        			try {
+        	        				ip.ip_receive_timeout(recv_IP_packet, 2);
+        	        			}
+        	        			catch (InterruptedException e) {
+        	        				// ignore timeout
+        	        			}
+        	        			finally {
+    	    						// we close the connection regardless of the received packet 
+    	        					this.close();
+        	        			}
+        					}
         					// send failed
         					return false;
         				}
@@ -323,11 +392,49 @@ public class TCP {
 		    			continue; // bad packet, wait for resend
 		    		}
 		    		
-    				// TODO: check if it is FIN packet
     				if (tcpPacket.isFIN_Flag()) {
-    					// close connection 
-    					this.close();
-    					// send failed
+    					// check state
+    					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
+    						// passive close
+    						control.tcb_state = ConnectionState.S_CLOSE_WAIT;
+    						// create ACK packet
+    	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
+    	        			// make sure ACK flag is set
+    	        			reply.setACK_Flag(true);
+    	        			// create IP packet
+    	        			IP.Packet encoded = this.control.createIPPacket(reply);
+    	        			// send ACK
+    	        			ip.ip_send(encoded);
+    	        			// close connection 
+        					this.close();
+    					}
+    					else if (control.tcb_state == ConnectionState.S_ESTABLISHED ||
+    							control.tcb_state == ConnectionState.S_SYN_RCVD) {
+    						// active close
+    						control.tcb_state = ConnectionState.S_FIN_WAIT_1;
+    						// create FIN+ACK packet
+    	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, true);
+    	        			// make sure ACK flag is set
+    	        			reply.setACK_Flag(true);
+    	        			// create IP packet
+    	        			IP.Packet encoded = this.control.createIPPacket(reply);
+    	        			// send FIN+ACK
+    	        			ip.ip_send(encoded);
+    	        			// go to TIME_WAIT state
+    	        			control.tcb_state = ConnectionState.S_TIME_WAIT;
+    	        			// wait for ACK packet (twice longer than normal)
+    	        			try {
+    	        				ip.ip_receive_timeout(recv_IP_packet, 2);
+    	        			}
+    	        			catch (InterruptedException e) {
+    	        				// ignore timeout
+    	        			}
+    	        			finally {
+	    						// we close the connection regardless of the received packet 
+	        					this.close();
+    	        			}
+    					}
+    					// recv failed
     					return false;
     				}
 
@@ -1039,6 +1146,13 @@ public class TCP {
 						tcb_state = ConnectionState.S_ESTABLISHED;
 						return true;
 					}
+					// active close
+					else if (tcpPacket.isFIN_Flag()) {
+						// If we were in SYN_RCVD state and received a FIN package, we go to FIN_WAIT_1 state
+						tcb_state = ConnectionState.S_FIN_WAIT_1;
+						
+						return false;
+					}
 					else {
 						Logging.getInstance().LogTcpPacketError("Expected ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
 					}
@@ -1085,9 +1199,10 @@ public class TCP {
 	    			tcb_remote_next_expected_SEQ_num = 0;
 	    			break;
 	    		case S_SYN_RCVD:
-	    			// SYN/ACK packet: use received SEQ+1 as ACK-NR
+	    		case S_TIME_WAIT:
+	    		case S_CLOSE_WAIT:
+	    			// use received SEQ+1 as ACK-NR
 	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
-	    			
 	    			break;
     		}
     		
@@ -1113,6 +1228,16 @@ public class TCP {
         			// create SYN/ACK packet
         			next_packet.setSYN_Flag(true);
         			next_packet.setACK_Flag(true);
+        			break;
+        		case S_CLOSE_WAIT:
+        			// ceate FIN/ACK packet
+        			next_packet.setFIN_Flag(true);
+        			next_packet.setACK_Flag(true);
+        			break;
+        		case S_LAST_ACK:
+        		case S_FIN_WAIT_1:
+        			// create FIN packet
+        			next_packet.setFIN_Flag(true);
         			break;
         	}
         	
