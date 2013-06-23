@@ -19,7 +19,7 @@ public class TCP {
 	/** The underlying IP stack for this TCP stack. */
     private IP ip;
 
-    
+       
     /**
      * This class represents a TCP socket.
      *
@@ -1199,8 +1199,10 @@ public class TCP {
 	    		case S_SYN_RCVD:
 	    		case S_TIME_WAIT:
 	    		case S_CLOSE_WAIT:
+	    		case S_FIN_WAIT_1:
+	    			default:
 	    			// use received SEQ+1 as ACK-NR
-	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
+	    			tcb_local_sequence_num = this.tcb_remote_next_expected_SEQ_num;
 	    			break;
     		}
     		
