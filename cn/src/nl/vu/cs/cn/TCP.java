@@ -105,7 +105,7 @@ public class TCP {
     		}
         	this.sent_IP_packet = control.createIPPacket(syn_packet);
         	if (!send_tcp_packet(false)) {
-        		Logging.getInstance().LogTcpPacketError("Sending SYN packet failed, 'connect' aborted!");
+        		Logging.getInstance().LogTcpPacketError(control, "Sending SYN packet failed, 'connect' aborted!");
         		return false;
         	}
         	
@@ -113,15 +113,15 @@ public class TCP {
         	control.tcb_state = ConnectionState.S_SYN_SENT;
         	
         	// wait to receive a packet
-    		if (!recv_tcp_packet(false, false)){
-        		Logging.getInstance().LogTcpPacketError("Receiving SYN/ACK packet failed, 'connect' aborted!");
+    		if (!recv_tcp_packet(true, false)){
+        		Logging.getInstance().LogTcpPacketError(control, "Receiving SYN/ACK packet failed, 'connect' aborted!");
         		control.resetConnection(ConnectionState.S_CLOSED);
         		return false;
         	}
         	
 
     		
-    		
+    		/*
     		// Create and send ACK package
     		TcpPacket ack_packet = control.createTcpPacket(null, 0, 0, false);
     		if (ack_packet == null) {
@@ -129,12 +129,13 @@ public class TCP {
     			return false;
     		}
     		ack_packet.setACK_Flag(true);
+    		control.tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(control.tcb_local_sequence_num, 1);
         	this.sent_IP_packet = control.createIPPacket(ack_packet);
         	if (!send_tcp_packet(false)) {
         		Logging.getInstance().LogTcpPacketError("Sending ACK packet failed, 'connect' aborted!");
         		control.resetConnection(ConnectionState.S_CLOSED);
         		return false;
-        	}
+        	}*/
     		
         	
             return true;
@@ -154,7 +155,7 @@ public class TCP {
 
             // Start with the three-way handshake here.
         	if (!recv_tcp_packet(false, true)) {
-        		Logging.getInstance().LogTcpPacketError("Receiving SYN packet failed, 'accept' aborted!");
+        		Logging.getInstance().LogTcpPacketError(control, "Receiving SYN packet failed, 'accept' aborted!");
         		return;
         	}
         	
@@ -166,14 +167,14 @@ public class TCP {
     		}
         	this.sent_IP_packet = control.createIPPacket(synack_packet);
         	if (!send_tcp_packet(false)) {
-        		Logging.getInstance().LogTcpPacketError("Sending SYN/ACK packet failed, 'accept' aborted!");
+        		Logging.getInstance().LogTcpPacketError(control, "Sending SYN/ACK packet failed, 'accept' aborted!");
         		control.resetConnection(ConnectionState.S_LISTEN);
         		return;
         	}
         	
         	// wait to receive a ACK packet
     		if (!recv_tcp_packet(false, false)){
-        		Logging.getInstance().LogTcpPacketError("Receiving ACK packet failed, 'accept' aborted!");
+        		Logging.getInstance().LogTcpPacketError(control, "Receiving ACK packet failed, 'accept' aborted!");
         		control.resetConnection(ConnectionState.S_LISTEN);
         		return;
         	}
@@ -468,12 +469,9 @@ public class TCP {
 
 				
 	    		// check if the received packet has the correct flags
-	    		if (!control.omitConnectionState(tcpPacket)) {
+	    		if (!control.acceptReceivedTcpPacket(tcpPacket)) {
 	    			return false; // correct, but unexpected packet -> don´t wait for resend, just return false
 	    		}
-	    		
-	    		// accept received TCP packet
-	    		control.acceptReceivedTcpPacket(tcpPacket);
 				
 				
 	    		// don´t send ACK packets, just return true, because of a successful receive
@@ -506,6 +504,18 @@ public class TCP {
         	
         	// successfully received
         	return false;
+        }
+        
+        
+        /**
+         * Returns the last received Tcp Packet. This method is only used for testing purposes.
+         * @return
+         */
+        public TcpPacket getLastReceivedTcpPacketForTesting() {
+        	if (this.recv_IP_packet == null)
+        		return null;
+        	
+        	return control.lastReceivedTcpPacket;
         }
     }
 
@@ -991,13 +1001,18 @@ public class TCP {
     	/** The current TCP connection state. */
     	ConnectionState tcb_state; 
     	
+    	/** The communication side can be either 'SERVER' or 'CLIENT' (this is just a name for debugging purposes) */
+    	String tcb_communication_side = "";
     	
+    	/** Contains the last received (and successful verified) TCP packet. This is only needed for testing purposes.*/
+    	TcpPacket lastReceivedTcpPacket = null;
     	
     	/**
     	 * Constructor called by client
     	 */
     	public TcpControlBlock() {
     		tcb_state = ConnectionState.S_CLOSED;
+    		tcb_communication_side = "CLIENT";
     		
     		// SEQ and ACK are set to default values
     		tcb_local_sequence_num = 0; //-1;
@@ -1024,6 +1039,7 @@ public class TCP {
     			throw new IOException("Invalid local port!");
     		}
 
+    		tcb_communication_side = "SERVER";
     		tcb_local_port = local_port;
     		   		
     		// SEQ and ACK are set to default values
@@ -1052,13 +1068,13 @@ public class TCP {
     		// check, if the received IP packet has the expected IP addresses 
     		// this would also be detected by verifyChecksum of the TcpPacket, but here we produce a better error message 
     		if (ipPacket.destination != tcb_local_ip_addr) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong destination IP address "
+    			Logging.getInstance().LogTcpPacketError(this, "The received IP packet had the wrong destination IP address "
     					+ "(expectedIP='" + IpAddress.htoa(tcb_local_ip_addr) + "', "
     					+ "packet-destination-address='" + IpAddress.htoa(ipPacket.destination) + "')");
     			return null;
     		}
     		if (ipPacket.source != tcb_remote_ip_addr) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packet had the wrong source IP address "
+    			Logging.getInstance().LogTcpPacketError(this, "The received IP packet had the wrong source IP address "
     					+ "(expectedIP='" + IpAddress.htoa(tcb_remote_ip_addr) + "', "
     					+ "packet-source-address='" + IpAddress.htoa(ipPacket.source) + "')");
     			return null;
@@ -1066,7 +1082,7 @@ public class TCP {
     			
     		// verify protocol version
     		if (ipPacket.protocol != IP.Packet.IP_PROTOCOL_V4) {
-    			Logging.getInstance().LogTcpPacketError("The received IP packed had the wrong protocol version (expected='"+ IP.Packet.IP_PROTOCOL_V4 +"', actual='" + ipPacket.protocol +"').");
+    			Logging.getInstance().LogTcpPacketError(this, "The received IP packed had the wrong protocol version (expected='"+ IP.Packet.IP_PROTOCOL_V4 +"', actual='" + ipPacket.protocol +"').");
     			return null;
     		}
     		
@@ -1084,7 +1100,7 @@ public class TCP {
         	//TODO: verify ports (this would also be detected by verifyChecksum of the TcpPacket, so it´s nice but not really necessary)
         	
     		if (!tcpPacket.verifyChecksum()) {
-    			Logging.getInstance().LogTcpPacketError("The received TCP packet had the wrong checksum!");
+    			Logging.getInstance().LogTcpPacketError(this, "The received TCP packet had the wrong checksum!");
     			return null;
     		}
     		
@@ -1092,70 +1108,57 @@ public class TCP {
     		if (tcb_state != ConnectionState.S_CLOSED && tcb_state != ConnectionState.S_LISTEN) {
     		
     			// don´t verify SEQ number during connection setup
-    			if (tcb_state != ConnectionState.S_SYN_SENT && tcb_state != ConnectionState.S_SYN_RCVD) {
+    			if (tcb_state != ConnectionState.S_SYN_SENT) {
 	    			// Verify the SEQ number, which should be the tcb_remote_next_expected_SEQ_num
 		    		if (tcb_remote_next_expected_SEQ_num != tcpPacket.getSEQNumber()) {
-		    			Logging.getInstance().LogTcpPacketError("Wrong SEQ number. Expected was '" + tcb_remote_next_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + "'!");
+		    			Logging.getInstance().LogTcpPacketError(this, "Wrong SEQ number. Expected was '" + tcb_remote_next_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + "'!");
 		    			return null;
 		    		}
 		    		
 		    		// Verify that the length of the packet is OK, that means the tcb_remote_last_expected_SEQ_num <= SEQnumber + payloadLength
 		    		if (tcb_remote_last_expected_SEQ_num < tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength()) {
-		    			Logging.getInstance().LogTcpPacketError("Packet too long. Expected last SEQ num should be <= '" + tcb_remote_last_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength() + "'!");
+		    			Logging.getInstance().LogTcpPacketError(this, "Packet too long. Expected last SEQ num should be <= '" + tcb_remote_last_expected_SEQ_num + "', but was '" + tcpPacket.getSEQNumber() + tcpPacket.getPayloadLength() + "'!");
 		    			return null;
 		    		}
     			}
 	    		
 	    		// if the received packet is an ACK packet, we have to verify the tcb_local_expected_ack
 	    		if (tcpPacket.isACK_Flag() && tcb_local_expected_ack != tcpPacket.getACKNumber()) {
-	    			Logging.getInstance().LogTcpPacketError("Wrong ACK number. Expected was '" + tcb_local_expected_ack + "', but was '" + tcpPacket.getACKNumber() + "'!");
+	    			Logging.getInstance().LogTcpPacketError(this, "Wrong ACK number. Expected was '" + tcb_local_expected_ack + "', but was '" + tcpPacket.getACKNumber() + "'!");
 	    			return null;
 	    		}
     		}
     		
-			
+    		lastReceivedTcpPacket = tcpPacket;
     		return tcpPacket;
     	}
     	
+
+    		
     	
+    		
     	/**
     	 * The method is called after a received TcpPacket was verified successfully. 
-    	 * The method changes the SEQ and/or ACK numbers of the TcpControlblock.
-    	 * @param tcpPacket
-    	 */
-    	public void acceptReceivedTcpPacket(TcpPacket tcpPacket) {
-    		
-    		if (tcpPacket.isACK_Flag()) {
-    			
-    			tcb_local_expected_ack = tcpPacket.getACKNumber();
-    		}
-    		
-    		tcb_remote_next_expected_SEQ_num = tcpPacket.getSEQNumber();
-    		tcb_remote_last_expected_SEQ_num = tcb_remote_next_expected_SEQ_num + TcpPacket.MAX_PAYLOAD_LENGTH;
-    	}
-    		
-    	
-    		
-    	/**
-    	 * Change/Omit the state of the connection, depending on the current state and the flags in the received TCP packet.
+    	 * The method changes the state of the connection and the SEQ and/or ACK numbers of the TcpControlblock, depending on the current state and the flags in the received TCP packet.
     	 * @param tcpPacket
     	 * @return true if the packet was an expected packet, otherwise false.
     	 */
-    	public boolean omitConnectionState(TcpPacket tcpPacket) {
+    	public boolean acceptReceivedTcpPacket(TcpPacket tcpPacket) {
     		
+    		boolean receivedPacketWasExpected = false;
     		switch(tcb_state) {
 				case S_CLOSED:
 					Logging.getInstance().LogConnectionError(this, "Package was received while TCP was in CLOSED state!");
-					return false;
+					break;
 					
 				case S_SYN_SENT:
 					if (tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
-						// If we were in SYN_SENT state and received a valid SYN-ACK package, we go to ESTABLISHED state
-						tcb_state = ConnectionState.S_ESTABLISHED;
-						return true;
+						tcb_remote_next_expected_SEQ_num = ConnectionUtils.getNextSequenceNumber(tcpPacket.getSEQNumber(), 1);
+						tcb_remote_last_expected_SEQ_num = tcb_remote_next_expected_SEQ_num + TcpPacket.MAX_PAYLOAD_LENGTH;
+						receivedPacketWasExpected = true;
 					}
 					else {
-						Logging.getInstance().LogTcpPacketError("Expected SYN/ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+						Logging.getInstance().LogTcpPacketError(this, "Expected SYN/ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
 					}
 					break;
 				
@@ -1163,11 +1166,12 @@ public class TCP {
 					if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
 						// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state and create a new tcb_local_sequence_num
 						tcb_state = ConnectionState.S_SYN_RCVD;
-						tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
-						return true;
+						tcb_remote_next_expected_SEQ_num = ConnectionUtils.getNextSequenceNumber(tcpPacket.getSEQNumber(), 1);
+						tcb_remote_last_expected_SEQ_num = tcb_remote_next_expected_SEQ_num + TcpPacket.MAX_PAYLOAD_LENGTH;
+						receivedPacketWasExpected = true;
 					}
 					else {
-						Logging.getInstance().LogTcpPacketError("Expected SYN packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+						Logging.getInstance().LogTcpPacketError(this, "Expected SYN packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
 					}
 					break;
 					
@@ -1175,24 +1179,37 @@ public class TCP {
 					if (!tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
 						// If we were in SYN_RCVD state and received a valid ACK package, we go to ESTABLISHED state
 						tcb_state = ConnectionState.S_ESTABLISHED;
-						return true;
+						receivedPacketWasExpected = true;
 					}
 					// active close
 					else if (tcpPacket.isFIN_Flag()) {
 						// If we were in SYN_RCVD state and received a FIN package, we go to FIN_WAIT_1 state
 						tcb_state = ConnectionState.S_FIN_WAIT_1;
 						
-						return false;
+						receivedPacketWasExpected = true;
 					}
 					else {
-						Logging.getInstance().LogTcpPacketError("Expected ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
+						Logging.getInstance().LogTcpPacketError(this, "Expected ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
 					}
 					break;
 					
 				case S_ESTABLISHED:
-					return true;
+					receivedPacketWasExpected = true;
+					break;
     		}
-    		return false;
+    		
+    		if (receivedPacketWasExpected) {
+    			if (tcpPacket.isACK_Flag()) {
+        			
+        			tcb_local_expected_ack = tcpPacket.getACKNumber();
+        		}
+        		
+    			if (!tcpPacket.isSYN_Flag()) {
+    				tcb_remote_next_expected_SEQ_num = ConnectionUtils.getNextSequenceNumber(tcpPacket.getSEQNumber(), tcpPacket.getPayloadLength());
+    				tcb_remote_last_expected_SEQ_num = tcb_remote_next_expected_SEQ_num + TcpPacket.MAX_PAYLOAD_LENGTH;
+    			}
+    		}
+    		return receivedPacketWasExpected;
 			
 		}
     	
@@ -1229,13 +1246,27 @@ public class TCP {
 	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 	    			tcb_remote_next_expected_SEQ_num = 0;
 	    			break;
+	    		case S_SYN_SENT:
+	    			// If we were in SYN_SENT state and create a new package, we are in Established state after sending it
+					tcb_state = ConnectionState.S_ESTABLISHED;
+					break;
 	    		case S_SYN_RCVD:
+	    			// create SYN/ACK package
+	    			tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
+	    			break;
 	    		case S_TIME_WAIT:
 	    		case S_CLOSE_WAIT:
+	    			// ceate FIN/ACK packet
+	    			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
+	    			break;
 	    		case S_FIN_WAIT_1:
-	    			default:
+	    			// create FIN packet
+	    			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
+	    			break;
+	    		default:
+	    			// TODO: HB: I don´t understand this code, I guess it´s wrong....
 	    			// use received SEQ+1 as ACK-NR
-	    			tcb_local_sequence_num = this.tcb_remote_next_expected_SEQ_num;
+	    			// tcb_local_sequence_num = this.tcb_remote_next_expected_SEQ_num;
 	    			break;
     		}
     		
@@ -1245,22 +1276,30 @@ public class TCP {
         			tcb_local_port,			// local PORT
         			tcb_remote_port, 		// remote PORT
         			tcb_local_sequence_num,	// SEQ number
-        			tcb_local_expected_ack,	// ACK number
+        			tcb_remote_next_expected_SEQ_num,	// ACK number
         			buf);
         	
         	// increase the tcb_local_sequence_num
         	tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, len);
+        	
         	
         	// set the FLAGS and the connection state after creating the TCP package
         	switch(tcb_state) {
         		case S_CLOSED:
         			// create SYN packet
         			next_packet.setSYN_Flag(true);
+        			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
+        			tcb_local_expected_ack = tcb_local_sequence_num;
         			break;
         		case S_SYN_RCVD:
         			// create SYN/ACK packet
         			next_packet.setSYN_Flag(true);
         			next_packet.setACK_Flag(true);
+        			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
+        			tcb_local_expected_ack = tcb_local_sequence_num;
+        			break;
+        		case S_ESTABLISHED:
+        			tcb_local_expected_ack = tcb_local_sequence_num;
         			break;
         		case S_CLOSING:
         		case S_CLOSE_WAIT:

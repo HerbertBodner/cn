@@ -23,7 +23,7 @@ public class Logging {
 	
 	
 	
-	private boolean detailedLogging = false;
+	private boolean detailedLogging = true;
 	
 	/**
 	 * Switch on/off detailed logging (if it is on, then the current connection state with some additional information is written to LogCat) 
@@ -34,11 +34,12 @@ public class Logging {
 	}
 	
 	/**
-	 * Log a TCPPacket Error with a given msg to LogCat
+	 * Log a TCPPacket Error with a given msg to LogCat.
+	 * @param control
 	 * @param msg
 	 */
-	public void LogTcpPacketError(String msg) {
-		Log(null, "TCPPacketError", msg);
+	public void LogTcpPacketError(TcpControlBlock control, String msg) {
+		Log(control, "TCPPacketError", msg);
 	}
 	
 	/**
@@ -66,7 +67,8 @@ public class Logging {
 	 */
 	private void Log(TcpControlBlock control, String type, String msg) {
 		if (control != null && detailedLogging) {
-			msg += "; ConnectionState=" + control.tcb_state 
+			msg += "; Side='" + control.tcb_communication_side + "'"
+					+ ", ConnectionState=" + control.tcb_state 
 					+ ", tcb_local_sequence_num=" + control.tcb_local_sequence_num 
 					+ ", tcb_local_expected_ack=" + control.tcb_local_expected_ack 
 					+ ", tcb_remote_next_expected_SEQ_num=" + control.tcb_remote_next_expected_SEQ_num 

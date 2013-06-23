@@ -10,6 +10,7 @@ import nl.vu.cs.cn.Logging;
 import nl.vu.cs.cn.TCP;
 import nl.vu.cs.cn.IP.IpAddress;
 import nl.vu.cs.cn.TCP.Socket;
+import nl.vu.cs.cn.TCP.TcpPacket;
 import android.test.AndroidTestCase;
 
 public class ClientServerTest extends AndroidTestCase {
@@ -179,6 +180,19 @@ public class ClientServerTest extends AndroidTestCase {
 					assertEquals(exptectedTextToReceive[i], buf[i]);
 				}
 				
+				//verify SEQ/ACK numbers
+				TcpPacket tcpPacket = serverSocket.getLastReceivedTcpPacketForTesting();
+				if (tcpPacket == null)
+					fail("No last received TCP packet available!");
+				long SEQnum = tcpPacket.getSEQNumber();
+				long ACKnum = tcpPacket.getACKNumber();
+				assertEquals(0, SEQnum);
+				assertEquals(0, ACKnum);
+				
+				long localSEQNum = serverSocket.getTcpControlBlock().getLocalSeqForTesting();
+				long remoteNextSEQNum = serverSocket.getTcpControlBlock().getRemoteNextSeqForTesting();
+				assertEquals(0, localSEQNum);
+				assertEquals(12, remoteNextSEQNum);
 	        }
 	    });
 		serverThread.start();
@@ -210,6 +224,19 @@ public class ClientServerTest extends AndroidTestCase {
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
 				
+				// verify SEQ/ACK numbers
+				TcpPacket tcpPacket = clientSocket.getLastReceivedTcpPacketForTesting();
+				if (tcpPacket == null)
+					fail("No last received TCP packet available!");
+				long SEQnum = tcpPacket.getSEQNumber();
+				long ACKnum = tcpPacket.getACKNumber();
+				assertEquals(0, SEQnum);
+				assertEquals(12, ACKnum);
+				
+				long localSEQNum = clientSocket.getTcpControlBlock().getLocalSeqForTesting();
+				long remoteNextSEQNum = clientSocket.getTcpControlBlock().getRemoteNextSeqForTesting();
+				assertEquals(12, localSEQNum);
+				assertEquals(0, remoteNextSEQNum);
 	        }
 		});
 		clientThread.start();
