@@ -250,9 +250,18 @@ public class ClientServerTest extends AndroidTestCase {
 				for(int i = 0; i<11; i++) {
 					assertEquals(exptectedTextToReceive[i], buf[i]);
 				}
+				try {
+					this.wait(5000);	// wait for close()
+				}
+				catch (Exception e) {
+					e.printStackTrace();
+				}
+				// try reading again
+				serverSocket.read(buf, 0, 1024);
 				
+				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
 				// connection state should be CLOSED
-				//Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
 				
 	        }
 	    });
