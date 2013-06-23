@@ -39,7 +39,7 @@ public class ConnectionUtils {
 
 		if (port < 0 || port > MAX16BIT_VALUE)
 		{
-			Logging.getInstance().LogTcpPacketError("Destination port number only allowed between 0 and " + MAX16BIT_VALUE + ".");
+			Logging.getInstance().LogTcpPacketError(null, "Destination port number only allowed between 0 and " + MAX16BIT_VALUE + ".");
 			return false;
 		}
 		return true;
@@ -55,7 +55,7 @@ public class ConnectionUtils {
 		
 		if (seqNr < 0 || seqNr > MAX32BIT_VALUE)
 		{
-			Logging.getInstance().LogTcpPacketError("Acknowledgement number only allowed between 0 and " + MAX32BIT_VALUE + ".");
+			Logging.getInstance().LogTcpPacketError(null, "Acknowledgement number only allowed between 0 and " + MAX32BIT_VALUE + ".");
 			return false;
 		}
 		return true;
