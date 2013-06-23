@@ -104,7 +104,7 @@ public class TCP {
     			return false;
     		}
         	this.sent_IP_packet = control.createIPPacket(syn_packet);
-        	if (!send_tcp_packet()) {
+        	if (!send_tcp_packet(false)) {
         		Logging.getInstance().LogTcpPacketError("Sending SYN packet failed, 'connect' aborted!");
         		return false;
         	}
@@ -113,7 +113,7 @@ public class TCP {
         	control.tcb_state = ConnectionState.S_SYN_SENT;
         	
         	// wait to receive a packet
-    		if (!recv_tcp_packet()){
+    		if (!recv_tcp_packet(false, false)){
         		Logging.getInstance().LogTcpPacketError("Receiving SYN/ACK packet failed, 'connect' aborted!");
         		control.resetConnection(ConnectionState.S_CLOSED);
         		return false;
@@ -130,7 +130,7 @@ public class TCP {
     		}
     		ack_packet.setACK_Flag(true);
         	this.sent_IP_packet = control.createIPPacket(ack_packet);
-        	if (!send_tcp_packet()) {
+        	if (!send_tcp_packet(false)) {
         		Logging.getInstance().LogTcpPacketError("Sending ACK packet failed, 'connect' aborted!");
         		control.resetConnection(ConnectionState.S_CLOSED);
         		return false;
@@ -153,7 +153,7 @@ public class TCP {
         	}
 
             // Start with the three-way handshake here.
-        	if (!recv_tcp_packet(true)) {
+        	if (!recv_tcp_packet(false, true)) {
         		Logging.getInstance().LogTcpPacketError("Receiving SYN packet failed, 'accept' aborted!");
         		return;
         	}
@@ -165,14 +165,14 @@ public class TCP {
     			return;
     		}
         	this.sent_IP_packet = control.createIPPacket(synack_packet);
-        	if (!send_tcp_packet()) {
+        	if (!send_tcp_packet(false)) {
         		Logging.getInstance().LogTcpPacketError("Sending SYN/ACK packet failed, 'accept' aborted!");
         		control.resetConnection(ConnectionState.S_LISTEN);
         		return;
         	}
         	
         	// wait to receive a ACK packet
-    		if (!recv_tcp_packet()){
+    		if (!recv_tcp_packet(false, false)){
         		Logging.getInstance().LogTcpPacketError("Receiving ACK packet failed, 'accept' aborted!");
         		control.resetConnection(ConnectionState.S_LISTEN);
         		return;
@@ -192,7 +192,8 @@ public class TCP {
         public int read(byte[] buf, int offset, int maxlen) {
 
             // Read from the socket here.
-        	recv_tcp_packet();
+        	if (!recv_tcp_packet(true, false))
+        		return -1;
         	
         	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
         	tcp.getPayload(buf);
@@ -218,7 +219,7 @@ public class TCP {
         	this.sent_IP_packet = control.createIPPacket(next_packet);
         	
         	
-        	send_tcp_packet();
+        	send_tcp_packet(true);
             return -1;
         }
         
@@ -249,7 +250,7 @@ public class TCP {
         		TcpPacket close_response = control.createTcpPacket("".getBytes(), 0, 0, true);
         		this.sent_IP_packet = control.createIPPacket(close_response);
         		// we don't check for the result of the send because we close the connection anyway
-        		send_tcp_packet();
+        		send_tcp_packet(false);
         		// close connection
         		Logging.getInstance().LogConnectionInformation(control, "TCP connection was PASSIVELY closed!");
         		control.resetConnection(ConnectionState.S_CLOSED);
@@ -265,13 +266,13 @@ public class TCP {
         		this.sent_IP_packet = control.createIPPacket(close_response);
         		// go to CLOSING state
         		control.tcb_state = ConnectionState.S_CLOSING;
-        		send_tcp_packet();
+        		send_tcp_packet(false);
         		// go to TIME_WAIT state
         		control.tcb_state = ConnectionState.S_TIME_WAIT;
         		// must send the client an ACK
         		close_response = control.createTcpPacket("".getBytes(), 0, 0, false);
         		this.sent_IP_packet = control.createIPPacket(close_response);
-        		send_tcp_packet();
+        		send_tcp_packet(false);
         		// close connection
         		Logging.getInstance().LogConnectionInformation(control, "TCP connection was ACTIVELY closed!");
         		control.resetConnection(ConnectionState.S_CLOSED);
@@ -281,7 +282,7 @@ public class TCP {
         }
         
         
-        private boolean send_tcp_packet() {
+        private boolean send_tcp_packet(boolean waitForACKAfterSend) {
         	
         	// for a maximum of 10 retries
         	int i=0;
@@ -289,6 +290,12 @@ public class TCP {
 	        	try {
         			// try sending
         			ip.ip_send(this.sent_IP_packet);
+        		
+        			// don´t wait for ACKs during connection setup/teardown
+        			if (!waitForACKAfterSend)
+        				return true;
+        			
+        			
         			// wait for ACK
         			ip.ip_receive_timeout(recv_IP_packet, 1);
         			// check for "garbage" packages which do not count  
@@ -368,111 +375,109 @@ public class TCP {
         	return true;
         }
         
-        private boolean recv_tcp_packet() {
-        	return recv_tcp_packet(false);
-        }
 
-        private boolean recv_tcp_packet(boolean setRemoteIPAndPort) {
-        	// try reading until getting IOException or legitimate packet
-        	// for a maximum of 10 retries
-        	int i=0;
-        	while (i<10) {
-	        	try {
-	        		// wait for packet
-					ip.ip_receive_timeout(recv_IP_packet, 1);
-					// check if real packet has been received
-					if (recv_IP_packet == null)
-						continue;
-					
-					// verify the packet
-		        	TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, setRemoteIPAndPort);
-		    		if (tcpPacket == null) {
-		    			continue; // bad packet, wait for resend
-		    		}
-		    		
-    				if (tcpPacket.isFIN_Flag()) {
-    					// check state
-    					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
-    						// passive close
-    						control.tcb_state = ConnectionState.S_CLOSE_WAIT;
-    						// create ACK packet
-    	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
-    	        			// make sure ACK flag is set
-    	        			reply.setACK_Flag(true);
-    	        			// create IP packet
-    	        			IP.Packet encoded = this.control.createIPPacket(reply);
-    	        			// send ACK
-    	        			ip.ip_send(encoded);
-    	        			// close connection 
-        					this.close();
-    					}
-    					else if (control.tcb_state == ConnectionState.S_ESTABLISHED ||
-    							control.tcb_state == ConnectionState.S_SYN_RCVD) {
-    						// active close
-    						control.tcb_state = ConnectionState.S_FIN_WAIT_1;
-    						// create FIN+ACK packet
-    	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, true);
-    	        			// make sure ACK flag is set
-    	        			reply.setACK_Flag(true);
-    	        			// create IP packet
-    	        			IP.Packet encoded = this.control.createIPPacket(reply);
-    	        			// send FIN+ACK
-    	        			ip.ip_send(encoded);
-    	        			// go to TIME_WAIT state
-    	        			control.tcb_state = ConnectionState.S_TIME_WAIT;
-    	        			// wait for ACK packet (twice longer than normal)
-    	        			try {
-    	        				ip.ip_receive_timeout(recv_IP_packet, 2);
-    	        			}
-    	        			catch (InterruptedException e) {
-    	        				// ignore timeout
-    	        			}
-    	        			finally {
-	    						// we close the connection regardless of the received packet 
-	        					this.close();
-    	        			}
-    					}
-    					// recv failed
-    					return false;
-    				}
+        private boolean recv_tcp_packet(boolean sendACKAfterReceive, boolean acceptNewConnection) {
 
-
-		    		// check if the received packet has the correct flags
-		    		if (!control.omitConnectionState(tcpPacket)) {
-		    			return false; // correct, but unexpected packet -> don´t wait for resend, just return false
-		    		}
-		    		
-		    		// accept received TCP packet
-		    		control.acceptReceivedTcpPacket(tcpPacket);
-					
-					
-        			// create ACK packet
-        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
-        			// make sure ACK flag is set
-        			reply.setACK_Flag(true);
-        			// create IP packet
-        			IP.Packet encoded = this.control.createIPPacket(reply);
-        			// send ACK
-        			ip.ip_send(encoded);
-        			// verify for duplicates
-        			/*if (this.control.tcb_remote_next_expected_SEQ_num == decoded.getSEQNumber())
-        				continue;	// ACK was resent, listen for next packet (do not push this duplicate to application)
-        			// update control block info
-        			this.control.tcb_remote_next_expected_SEQ_num = decoded.getSEQNumber();*/
-        			// exit current waiting loop
-        			break;
-				} catch (IOException e) {
-					// connection forcely terminated => abort
-					e.printStackTrace();
+        	try {
+        		// wait for packet
+				ip.ip_receive_timeout(recv_IP_packet, 30);
+				// check if real packet has been received
+				if (recv_IP_packet == null)
 					return false;
-				} catch (InterruptedException e) {
-					// timed out, try again
-					e.printStackTrace();
-					i++;
+				
+				// verify the packet
+	        	TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, acceptNewConnection);
+	    		if (tcpPacket == null) {
+	    			return false; //TODO: send ACK package with old SEQ number
+	    		}
+	    		
+				if (tcpPacket.isFIN_Flag()) {
+					// check state
+					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
+						// passive close
+						control.tcb_state = ConnectionState.S_CLOSE_WAIT;
+						// create ACK packet
+	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
+	        			// make sure ACK flag is set
+	        			reply.setACK_Flag(true);
+	        			// create IP packet
+	        			IP.Packet encoded = this.control.createIPPacket(reply);
+	        			// send ACK
+	        			ip.ip_send(encoded);
+	        			// close connection 
+    					this.close();
+					}
+					else if (control.tcb_state == ConnectionState.S_ESTABLISHED ||
+							control.tcb_state == ConnectionState.S_SYN_RCVD) {
+						// active close
+						control.tcb_state = ConnectionState.S_FIN_WAIT_1;
+						// create FIN+ACK packet
+	        			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, true);
+	        			// make sure ACK flag is set
+	        			reply.setACK_Flag(true);
+	        			// create IP packet
+	        			IP.Packet encoded = this.control.createIPPacket(reply);
+	        			// send FIN+ACK
+	        			ip.ip_send(encoded);
+	        			// go to TIME_WAIT state
+	        			control.tcb_state = ConnectionState.S_TIME_WAIT;
+	        			// wait for ACK packet (twice longer than normal)
+	        			try {
+	        				ip.ip_receive_timeout(recv_IP_packet, 2);
+	        			}
+	        			catch (InterruptedException e) {
+	        				// ignore timeout
+	        			}
+	        			finally {
+    						// we close the connection regardless of the received packet 
+        					this.close();
+	        			}
+					}
+					// recv failed
+					return false;
 				}
-        	}
+
+
+				
+	    		// check if the received packet has the correct flags
+	    		if (!control.omitConnectionState(tcpPacket)) {
+	    			return false; // correct, but unexpected packet -> don´t wait for resend, just return false
+	    		}
+	    		
+	    		// accept received TCP packet
+	    		control.acceptReceivedTcpPacket(tcpPacket);
+				
+				
+	    		// don´t send ACK packets, just return true, because of a successful receive
+	    		if (!sendACKAfterReceive)
+	    			return true;
+	    		
+    			// create ACK packet
+    			TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
+    			// make sure ACK flag is set
+    			reply.setACK_Flag(true);
+    			// create IP packet
+    			IP.Packet encoded = this.control.createIPPacket(reply);
+    			// send ACK
+    			ip.ip_send(encoded);
+    			// verify for duplicates
+    			/*if (this.control.tcb_remote_next_expected_SEQ_num == decoded.getSEQNumber())
+    				continue;	// ACK was resent, listen for next packet (do not push this duplicate to application)
+    			// update control block info
+    			this.control.tcb_remote_next_expected_SEQ_num = decoded.getSEQNumber();*/
+    			// exit current waiting loop
+    			return true;
+			} catch (IOException e) {
+				// connection forcely terminated => abort
+				e.printStackTrace();
+				return false;
+			} catch (InterruptedException e) {
+				// timed out, try again
+				e.printStackTrace();
+			}
+        	
         	// successfully received
-        	return true;
+        	return false;
         }
     }
 
@@ -1004,14 +1009,14 @@ public class TCP {
     	/**	
     	 * Verifies a received Packet by checking the IP, port, SEQ/ACK number and returns a TcpPacket if everything is OK, otherwise null. 
     	 * @param ipPacket: the received IP packet
-    	 * @param setRemoteIPAndPort: this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects
+    	 * @param acceptNewConnection: this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects
     	 * @return a TcpPacket if everything is OK, otherwise null.
     	 */
-    	public TcpPacket verifyReceivedPacket(IP.Packet ipPacket, boolean setRemoteIPAndPort) {
+    	public TcpPacket verifyReceivedPacket(IP.Packet ipPacket, boolean acceptNewConnection) {
 
     		// set the remote_address and the remote port 
     		// (this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects)
-    		if (setRemoteIPAndPort) {
+    		if (acceptNewConnection) {
     			tcb_remote_ip_addr = ipPacket.source;
     		}
         	
@@ -1043,7 +1048,7 @@ public class TCP {
     		
     		// set the remote_address and the remote port 
     		// (this is needed when accepting a new connection at the server, because only at that time the server knows the address/port of the client, who connects)
-    		if (setRemoteIPAndPort) {
+    		if (acceptNewConnection) {
             	tcb_remote_port = tcpPacket.getSourcePort(); 	
     		}
 
@@ -1157,7 +1162,7 @@ public class TCP {
 					break;
 					
 				case S_ESTABLISHED:
-					break;
+					return true;
     		}
     		return false;
 			
@@ -1294,7 +1299,7 @@ public class TCP {
         			1,	// TODO: change this
         			ip_data,
         			ip_data.length);
-    		
+    		ip.source = tcb_local_ip_addr;
     		return ip;
     	}
     	
@@ -1310,7 +1315,7 @@ public class TCP {
         			1,	// TODO: change this
         			new byte[] {},
         			0);
-    		
+    		ip.source = tcb_local_ip_addr;
     		return ip;
     	}
     	    	
