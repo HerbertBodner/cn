@@ -339,4 +339,94 @@ public class ClientServerTest extends AndroidTestCase {
 		}
 	}
 	
+	/**
+	 * Create a client and a server in a separate thread, establish the connection, send "Hello World!" and close the connection.
+	 */
+	public static void runClientServerCommunication() {
+		// START SERVER in a thread
+		Thread serverThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "Server");
+	    
+	        	int serverIP = 1;
+	    		int serverPort = 80;
+	    		byte[] exptectedTextToReceive = "Hello World!".getBytes();
+				Socket serverSocket = ClientServerTest.getServerSocket(serverIP, serverPort);
+				
+				// listen at serverSocketListener and accept new incoming connections
+				serverSocket.accept();
+				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] buf = new byte[1024];
+				if (serverSocket.read(buf, 0, 1024) <= 0) {
+					fail("Failed to read a message from the client!");
+				}
+				
+				for(int i = 0; i<11; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
+				try {
+					this.wait(5000);	// wait for close()
+				}
+				catch (Exception e) {
+					e.printStackTrace();
+				}
+				// try reading again
+				serverSocket.read(buf, 0, 1024);
+				
+				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
+				// connection state should be CLOSED
+				Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+	        }
+	    });
+		serverThread.start();
+		
+		
+		
+	    // START CLIENT in a thread
+		Thread clientThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "Client");
+	    	    
+	        	int serverIP = 1;
+	        	int clientIP = 2;
+	        	int server_socket = 80;
+	        	String textToSend = "Hello World!";
+	        	
+				Socket clientSocket = ClientServerTest.getClientSocket(clientIP);
+				
+				// create server IP address and connect to server
+				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
+				if (!clientSocket.connect(serverAddress, server_socket)) {
+					fail("Failure during connect to server!");
+				}
+				
+				// connection state should be ESTABLISHED
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] textByteArray = textToSend.getBytes();
+				clientSocket.write(textByteArray, 0, textByteArray.length);
+				
+				// close connection
+				clientSocket.close();
+				
+				// connection state should be CLOSED
+				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+	        }
+		});
+		clientThread.start();
+		
+		
+		try {
+			serverThread.join();
+			clientThread.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			fail("Exception when joining the client and server thread: " + e.getMessage());
+		}
+	}
+	
 }

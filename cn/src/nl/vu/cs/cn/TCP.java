@@ -297,7 +297,7 @@ public class TCP {
 			while (i < 10) {
 				try {
 					// try sending or simulate a lost TcpPacket
-					if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend)) {
+					if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend, control.tcb_state)) {
 						ip.ip_send(this.sent_IP_packet);
 					}
 
