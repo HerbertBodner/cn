@@ -338,6 +338,7 @@ public class ClientServerTest extends AndroidTestCase {
 			fail("Exception when joining the client and server thread: " + e.getMessage());
 		}
 	}
+
 	
 	/**
 	 * Create a client and a server in a separate thread, establish the connection, send "Hello World!" and close the connection.
@@ -429,4 +430,5 @@ public class ClientServerTest extends AndroidTestCase {
 		}
 	}
 	
+
 }
