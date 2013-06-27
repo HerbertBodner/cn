@@ -814,6 +814,7 @@ public class TCP {
 				payloadLength = payload.length;
 				rawData.position(HEADER_SIZE);
 				rawData.put(payload);
+				int dummy=1;
 			}
 
 			// the length of the TCP packet is the length of the payload plus

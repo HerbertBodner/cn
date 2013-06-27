@@ -338,7 +338,7 @@ public class ClientServerTest extends AndroidTestCase {
 			fail("Exception when joining the client and server thread: " + e.getMessage());
 		}
 	}
-	/*
+	
 	public void testT015LargeReadWrite() {
 		// START SERVER in a thread
 		Thread serverThread = new Thread(new Runnable() {
@@ -356,9 +356,16 @@ public class ClientServerTest extends AndroidTestCase {
 				// listen at serverSocketListener and accept new incoming connections
 				serverSocket.accept();
 				
+				try {
+					this.wait(1000);	// wait a bit
+				}
+				catch (Exception e) {
+					e.printStackTrace();
+				}
+				
 				byte[] buf = new byte[9*1024];
-				if (serverSocket.read(buf, 0, 9*1024) <= 0) {
-					fail("Failed to read a message from the client!");
+				if (serverSocket.read(buf, 0, 9*1024-1) <= 0) {
+					fail("Failed to read a message from the client!"+buf.toString());
 				}
 				
 				for(int i = 0; i<9*1024; i++) {
@@ -411,5 +418,5 @@ public class ClientServerTest extends AndroidTestCase {
 			fail("Exception when joining the client and server thread: " + e.getMessage());
 		}
 	}
-	*/
+	
 }
