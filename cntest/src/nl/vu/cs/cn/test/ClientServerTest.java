@@ -338,5 +338,78 @@ public class ClientServerTest extends AndroidTestCase {
 			fail("Exception when joining the client and server thread: " + e.getMessage());
 		}
 	}
-	
+	/*
+	public void testT015LargeReadWrite() {
+		// START SERVER in a thread
+		Thread serverThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test server");
+	    
+	        	int serverIP = 1;
+	    		int serverPort = 80;
+	    		byte[] exptectedTextToReceive = new byte[9*1024];
+				Socket serverSocket = getServerSocket(serverIP, serverPort);
+				
+				for (int i=0; i<9*1024; i++)
+					exptectedTextToReceive[i] = "A".getBytes()[0];
+				
+				// listen at serverSocketListener and accept new incoming connections
+				serverSocket.accept();
+				
+				byte[] buf = new byte[9*1024];
+				if (serverSocket.read(buf, 0, 9*1024) <= 0) {
+					fail("Failed to read a message from the client!");
+				}
+				
+				for(int i = 0; i<9*1024; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
+				serverSocket.close();
+	        }
+	    });
+		serverThread.start();
+		
+		
+		
+	    // START CLIENT in a thread
+		Thread clientThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test client");
+	    	    
+	        	int serverIP = 1;
+	        	int clientIP = 2;
+	        	int server_socket = 80;
+	        	StringBuilder textToSend = new StringBuilder();
+	        	
+	        	for (int i=0; i<9*1024; i++)
+					textToSend.append("A");
+	        	
+				Socket clientSocket = getClientSocket(clientIP);
+				
+				// create server IP address and connect to server
+				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
+				if (!clientSocket.connect(serverAddress, server_socket)) {
+					fail("Failure during connect to server!");
+				}
+				
+				byte[] textByteArray = textToSend.toString().getBytes();
+				clientSocket.write(textByteArray, 0, textByteArray.length);
+				
+				// close connection
+				clientSocket.close();
+				
+			}
+		});
+		clientThread.start();
+		
+		
+		try {
+			serverThread.join();
+			clientThread.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			fail("Exception when joining the client and server thread: " + e.getMessage());
+		}
+	}
+	*/
 }

@@ -197,16 +197,30 @@ public class TCP {
 		 */
 		public int read(byte[] buf, int offset, int maxlen) {
 
-			// Read from the socket here.
-			if (!recv_tcp_packet(true, false))
-				return -1;
-
-			TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source,
-					this.recv_IP_packet.destination, this.recv_IP_packet.data,
-					this.recv_IP_packet.length);
-			tcp.getPayload(buf);
-			return 1;
-		}
+        	if (maxlen  < TcpPacket.MAX_PAYLOAD_LENGTH) {
+        		// Read from the socket here.
+            	if (!recv_tcp_packet(true, false))
+            		return -1;
+            	
+            	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
+            	tcp.getPayload(buf, offset);
+                return (int)tcp.getPayloadLength();
+        	}
+        	else {
+        		int segments = maxlen / TcpPacket.MAX_PAYLOAD_LENGTH + 1;
+        		
+        		for (int i=0; i<segments; i++)  {
+        			// Read from the socket here.
+                	if (!recv_tcp_packet(true, false))
+                		return (i*TcpPacket.MAX_PAYLOAD_LENGTH);
+                	
+                	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
+                	tcp.getPayload(buf, offset+i*TcpPacket.MAX_PAYLOAD_LENGTH);                    
+        		}
+        		return (buf.length-offset);
+        	}
+        	
+        }
 
 		/**
 		 * Writes to the socket from the buffer.
@@ -220,17 +234,49 @@ public class TCP {
 		 * @return the number of bytes written or -1 if an error occurs.
 		 */
 		public int write(byte[] buf, int offset, int len) {
-
-			// Write to the socket here.
-			TcpPacket next_packet = control.createTcpPacket(buf, offset, len,
-					false);
-			if (next_packet == null) {
-				return -1;
-			}
-
-			send_tcp_packet(next_packet, true);
-			return -1;
-		}
+        	
+        	// copy to buffer
+        	control.tcb_data = buf.clone();
+        	
+        	if (len < TcpPacket.MAX_PAYLOAD_LENGTH) {
+	            // Write to the socket here.       	
+	        	TcpPacket next_packet = control.createTcpPacket(control.tcb_data, offset, len, false);
+	        	if (next_packet == null) {
+	        		return -1;
+	        	}
+	        	       	
+	        	if (send_tcp_packet(next_packet, true))
+	        		return len;
+	        	else
+	        		return -1;
+        	}
+        	else {
+        		int segments = len / TcpPacket.MAX_PAYLOAD_LENGTH + 1;
+        		
+        		for (int i=0; i<segments; i++) {
+        			int length = TcpPacket.MAX_PAYLOAD_LENGTH;
+        			if (i==segments-1)
+        				length = len % TcpPacket.MAX_PAYLOAD_LENGTH;
+        			
+        			byte[] tempbuf = new byte[length];
+        			for (int k=0; k<length; k++)
+        				tempbuf[k] = control.tcb_data[offset+i*TcpPacket.MAX_PAYLOAD_LENGTH+k];
+        			TcpPacket next_packet = control.createTcpPacket(tempbuf, 
+        					0, 
+        					length, 
+        					false);
+    	        	if (next_packet == null) {
+    	        		return -1;
+    	        	}
+    	        	
+    	        	this.sent_IP_packet = control.createIPPacket(next_packet);	        	
+    	        	if (!send_tcp_packet(next_packet, true))
+    	        		return -1;
+        		}
+        		
+        		return len;
+        	}
+        }
 
 		/**
 		 * Non-blocking method that closes the current TCP connection for
@@ -290,6 +336,9 @@ public class TCP {
 
 		private boolean send_tcp_packet(TcpPacket tcpPacketToSend, boolean waitForACKAfterSend) {
 
+			// save previously sent packet
+			control.lastReceivedPacket = this.sent_IP_packet;
+			// replace with new packet
 			this.sent_IP_packet = control.createIPPacket(tcpPacketToSend);
 
 			// for a maximum of 10 retries
@@ -397,6 +446,23 @@ public class TCP {
 
 						if (control.acceptReceivedTcpPacket(tcpPacket)) {
 							return true; // packet send and ACK received successfully
+						}
+					}
+					// received packet was the "wrong one"
+					else if (control.tcb_state != ConnectionState.S_SYN_RCVD) {
+						if (control.verifyReceivedFailure == PacketVerifyFailure.F_WRONG_SEQ ||
+									control.verifyReceivedFailure == PacketVerifyFailure.F_WRONG_ACK) {
+							// store sent packet
+							IP.Packet aux = this.sent_IP_packet;
+							// replace with old packet
+							this.sent_IP_packet = control.lastReceivedPacket;
+							// try sending or simulate a lost TcpPacket
+							if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend)) {
+								ip.ip_send(this.sent_IP_packet);
+							}
+							// replace with stored packet 
+							this.sent_IP_packet = aux;
+							// continue normally with retry...
 						}
 					}
 
@@ -855,12 +921,12 @@ public class TCP {
 		 * 
 		 * @param payload
 		 */
-		public void getPayload(byte[] payload) {
-			int payloadLength = packetLength - HEADER_SIZE;
-			for (int i = 0; i < payloadLength; i++) {
-				payload[i] = rawData.get(HEADER_SIZE + i);
-			}
-		}
+		public void getPayload(byte[] payload, int offset) {
+    		int payloadLength = packetLength - HEADER_SIZE;
+    		for (int i = offset; i < payloadLength; i++) {
+    			payload[i] = rawData.get(HEADER_SIZE+i);
+    		}
+    	}
 
 		/**
 		 * @return the source port of the TCP packet
@@ -1026,6 +1092,9 @@ public class TCP {
 		/** Their port number. */
 		int tcb_remote_port;
 
+		/** Previously send packet (stored in case resend is needed) */
+		TcpPacket previous_tcp;
+		
 		/**
 		 * The SEQ number, which is used and increased during the creation of
 		 * new TCP packets to send.
@@ -1063,13 +1132,24 @@ public class TCP {
 		 * just a name for debugging purposes)
 		 */
 		String tcb_communication_side = "";
-
+		
 		/**
 		 * Contains the last received (and successful verified) TCP packet. This
 		 * is only needed for testing purposes.
 		 */
 		TcpPacket lastReceivedTcpPacket = null;
+		
+		/**
+		 * Contains the last received (and possibly lost) IP packet. It is needed
+		 * in case of resend.
+		 */
+		IP.Packet lastReceivedPacket = null;
 
+		/** Signals if the verifyPacket method failed because of receiving an
+		 * unexpected (bad SEQ/ACK) packet or a corrupted one
+		 *  */
+		PacketVerifyFailure verifyReceivedFailure = PacketVerifyFailure.F_UNDEFINED;
+		
 		/**
 		 * Constructor called by client
 		 */
@@ -1146,6 +1226,7 @@ public class TCP {
 								+ IpAddress.htoa(tcb_local_ip_addr) + "', "
 								+ "packet-destination-address='"
 								+ IpAddress.htoa(ipPacket.destination) + "')");
+				verifyReceivedFailure = PacketVerifyFailure.F_WRONG_IP;
 				return null;
 			}
 			if (ipPacket.source != tcb_remote_ip_addr) {
@@ -1156,6 +1237,7 @@ public class TCP {
 								+ IpAddress.htoa(tcb_remote_ip_addr) + "', "
 								+ "packet-source-address='"
 								+ IpAddress.htoa(ipPacket.source) + "')");
+				verifyReceivedFailure = PacketVerifyFailure.F_WRONG_IP;
 				return null;
 			}
 
@@ -1165,6 +1247,7 @@ public class TCP {
 						this,
 						"The received IP packed had the wrong protocol version (expected='4', actual='"
 								+ ipPacket.protocol + "').");
+				verifyReceivedFailure = PacketVerifyFailure.F_WRONG_PROTO;
 				return null;
 			}
 
@@ -1185,6 +1268,7 @@ public class TCP {
 			if (!tcpPacket.verifyChecksum()) {
 				Logging.getInstance().LogTcpPacketError(this,
 						"The received TCP packet had the wrong checksum!");
+				verifyReceivedFailure = PacketVerifyFailure.F_CORRUPT;
 				return null;
 			}
 
@@ -1204,6 +1288,7 @@ public class TCP {
 										+ tcb_remote_next_expected_SEQ_num
 										+ "', but was '"
 										+ tcpPacket.getSEQNumber() + "'!");
+						verifyReceivedFailure = PacketVerifyFailure.F_WRONG_SEQ;
 						return null;
 					}
 
@@ -1219,6 +1304,7 @@ public class TCP {
 										+ "', but was '"
 										+ tcpPacket.getSEQNumber()
 										+ tcpPacket.getPayloadLength() + "'!");
+						verifyReceivedFailure = PacketVerifyFailure.F_WRONG_SEQ;
 						return null;
 					}
 				}
@@ -1232,6 +1318,7 @@ public class TCP {
 							"Wrong ACK number. Expected was '"
 									+ tcb_local_expected_ack + "', but was '"
 									+ tcpPacket.getACKNumber() + "'!");
+					verifyReceivedFailure = PacketVerifyFailure.F_WRONG_ACK;
 					return null;
 				}
 			}
