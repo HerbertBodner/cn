@@ -67,6 +67,9 @@ public class ConnectionUtils {
 	 */
 	public static long getNewSequenceNumber() {
 		
+		// for temporary testing (do not checkin this)
+		//return 0;
+		
 		if (SEQUENCE_NR_STARTVALUE_FOR_TESTING != 0) {
 			return SEQUENCE_NR_STARTVALUE_FOR_TESTING;
 		}
@@ -76,7 +79,6 @@ public class ConnectionUtils {
 		ISN_TIMESTAMP = System.currentTimeMillis();
 		
 		return (System.currentTimeMillis()-stored_timestamp)*4 % ConnectionUtils.MAX32BIT_VALUE;
-		
 	}
 	
 	/**

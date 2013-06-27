@@ -162,7 +162,7 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 	    
 	        	int serverIP = 1;
 	    		int serverPort = 80;
-	    		
+	    		byte[] exptectedTextToReceive = "Hello world!".getBytes();
 	
 				Socket serverSocket = ClientServerTest.getServerSocket(serverIP, serverPort);
 				
@@ -172,6 +172,14 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 				// connection state should be ESTABLISHED
 				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
 				
+				byte[] buf = new byte[1024];
+				if (serverSocket.read(buf, 0, 1024) <= 0) {
+					fail("Failed to read a message from the client!");
+				}
+				
+				for(int i = 0; i<12; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
 	        }
 	    });
 		serverThread.start();
@@ -186,7 +194,7 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 	        	int serverIP = 1;
 	        	int clientIP = 2;
 	        	int server_socket = 80;
-	        	
+	        	String textToSend = "Hello world!";
 				
 				Socket clientSocket = ClientServerTest.getClientSocket(clientIP);
 				
@@ -198,6 +206,9 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 				
 				// connection state should be ESTABLISHED
 				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] textByteArray = textToSend.getBytes();
+				clientSocket.write(textByteArray, 0, textByteArray.length);
 	        }
 		});
 		clientThread.start();
