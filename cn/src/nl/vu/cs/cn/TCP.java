@@ -346,7 +346,7 @@ public class TCP {
 			while (i < 10) {
 				try {
 					// try sending or simulate a lost TcpPacket
-					if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend)) {
+					if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend, control.tcb_state)) {
 						ip.ip_send(this.sent_IP_packet);
 					}
 
@@ -457,7 +457,7 @@ public class TCP {
 							// replace with old packet
 							this.sent_IP_packet = control.lastReceivedPacket;
 							// try sending or simulate a lost TcpPacket
-							if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend)) {
+							if (!PacketLossControl.getInstance().IsTcpPacketLost(tcpPacketToSend, control.tcb_state)) {
 								ip.ip_send(this.sent_IP_packet);
 							}
 							// replace with stored packet 

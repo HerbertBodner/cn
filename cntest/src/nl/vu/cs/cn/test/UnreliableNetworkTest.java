@@ -1,5 +1,6 @@
 package nl.vu.cs.cn.test;
 
+import junit.framework.Assert;
 import nl.vu.cs.cn.ConnectionState;
 import nl.vu.cs.cn.Logging;
 import nl.vu.cs.cn.IP.IpAddress;
@@ -25,61 +26,7 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 		PacketLossControl.getInstance().SetSYNPacketLost(1);
 		
 		
-		// START SERVER in a thread
-		Thread serverThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test server");
-	    
-	        	int serverIP = 1;
-	    		int serverPort = 80;
-	    		
-
-				Socket serverSocket = ClientServerTest.getServerSocket(serverIP, serverPort);
-				
-				// listen at serverSocketListener and accept new incoming connections
-				serverSocket.accept();
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
-				
-	        }
-	    });
-		serverThread.start();
-		
-		
-		
-	    // START CLIENT in a thread
-		Thread clientThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test client");
-	    	    
-	        	int serverIP = 1;
-	        	int clientIP = 2;
-	        	int server_socket = 80;
-	        	
-				
-				Socket clientSocket = ClientServerTest.getClientSocket(clientIP);
-				
-				// create server IP address and connect to server
-				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
-				if (!clientSocket.connect(serverAddress, server_socket)) {
-					fail("Failure during connect to server!");
-				}
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
-	        }
-		});
-		clientThread.start();
-		
-		
-		try {
-			serverThread.join();
-			clientThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			fail("Exception when joining the client and server thread: " + e.getMessage());
-		}
+		ClientServerTest.runClientServerCommunication();
 	}
 
 	
@@ -89,62 +36,7 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 		// SYN/ACK packet should be lost 1 time
 		PacketLossControl.getInstance().SetSYNACKPacketLost(1);
 		
-		
-		// START SERVER in a thread
-		Thread serverThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test server");
-	    
-	        	int serverIP = 1;
-	    		int serverPort = 80;
-	    		
-	
-				Socket serverSocket = ClientServerTest.getServerSocket(serverIP, serverPort);
-				
-				// listen at serverSocketListener and accept new incoming connections
-				serverSocket.accept();
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
-				
-	        }
-	    });
-		serverThread.start();
-		
-		
-		
-	    // START CLIENT in a thread
-		Thread clientThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test client");
-	    	    
-	        	int serverIP = 1;
-	        	int clientIP = 2;
-	        	int server_socket = 80;
-	        	
-				
-				Socket clientSocket = ClientServerTest.getClientSocket(clientIP);
-				
-				// create server IP address and connect to server
-				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
-				if (!clientSocket.connect(serverAddress, server_socket)) {
-					fail("Failure during connect to server!");
-				}
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
-	        }
-		});
-		clientThread.start();
-		
-		
-		try {
-			serverThread.join();
-			clientThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			fail("Exception when joining the client and server thread: " + e.getMessage());
-		}
+		ClientServerTest.runClientServerCommunication();
 	}
 	
 	
@@ -154,74 +46,36 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 		// ACK packet should be lost 1 times
 		PacketLossControl.getInstance().SetACKPacketLost(1);
 		
-		
-		// START SERVER in a thread
-		Thread serverThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test server");
-	    
-	        	int serverIP = 1;
-	    		int serverPort = 80;
-	    		byte[] exptectedTextToReceive = "Hello world!".getBytes();
-	
-				Socket serverSocket = ClientServerTest.getServerSocket(serverIP, serverPort);
-				
-				// listen at serverSocketListener and accept new incoming connections
-				serverSocket.accept();
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
-				
-				byte[] buf = new byte[1024];
-				if (serverSocket.read(buf, 0, 1024) <= 0) {
-					fail("Failed to read a message from the client!");
-				}
-				
-				for(int i = 0; i<12; i++) {
-					assertEquals(exptectedTextToReceive[i], buf[i]);
-				}
-	        }
-	    });
-		serverThread.start();
-		
-		
-		
-	    // START CLIENT in a thread
-		Thread clientThread = new Thread(new Runnable() {
-	        public void run() {
-	        	Logging.getInstance().LogConnectionInformation(null, "test client");
-	    	    
-	        	int serverIP = 1;
-	        	int clientIP = 2;
-	        	int server_socket = 80;
-	        	String textToSend = "Hello world!";
-				
-				Socket clientSocket = ClientServerTest.getClientSocket(clientIP);
-				
-				// create server IP address and connect to server
-				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
-				if (!clientSocket.connect(serverAddress, server_socket)) {
-					fail("Failure during connect to server!");
-				}
-				
-				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
-				
-				byte[] textByteArray = textToSend.getBytes();
-				clientSocket.write(textByteArray, 0, textByteArray.length);
-	        }
-		});
-		clientThread.start();
-		
-		
-		try {
-			serverThread.join();
-			clientThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			fail("Exception when joining the client and server thread: " + e.getMessage());
-		}
+		ClientServerTest.runClientServerCommunication();
 	}
+		
+		
+		
+		
+	public void testT034FINSendingPacketLoss() {
+		
+		// Sending FIN packet should be lost 1 times
+		PacketLossControl.getInstance().SetFINSendingPacketLost(1);
+	
+		ClientServerTest.runClientServerCommunication();
+	}
+
+	public void testT035FINReceivingPacketLoss() {
+		
+		// Receiving FIN packet should be lost 1 times
+		PacketLossControl.getInstance().SetFINReceivingPacketLost(1);
+	
+		ClientServerTest.runClientServerCommunication();
+	}
+	
+	public void testT036FINACKPacketLoss() {
+		
+		// FIN/ACK packet should be lost 1 times
+		PacketLossControl.getInstance().SetFINACKPacketLost(1);
+	
+		ClientServerTest.runClientServerCommunication();
+	}
+
 	
 	
 }
