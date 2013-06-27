@@ -248,9 +248,7 @@ public class TCP {
 					|| control.tcb_state == ConnectionState.S_SYN_SENT
 					|| control.tcb_state == ConnectionState.S_LISTEN
 					|| control.tcb_state == ConnectionState.S_TIME_WAIT) {
-				Logging.getInstance()
-						.LogConnectionInformation(control,
-								"TCP connection was not established, when calling method 'close'!");
+				Logging.getInstance().LogConnectionInformation(control, "TCP connection was not established, when calling method 'close'!");
 				control.resetConnection(ConnectionState.S_CLOSED);
 				return false;
 			}
@@ -260,14 +258,12 @@ public class TCP {
 				// go to LAST_ACK state
 				control.tcb_state = ConnectionState.S_LAST_ACK;
 				// must send the client a FIN
-				TcpPacket close_response = control.createTcpPacket(
-						null, 0, 0, true);
+				TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
 				// we don't check for the result of the send because we close
 				// the connection anyway
 				boolean response = send_tcp_packet(close_response, true);
 				// close connection
-				Logging.getInstance().LogConnectionInformation(control,
-						"TCP connection was PASSIVELY closed!");
+				Logging.getInstance().LogConnectionInformation(control, "TCP connection was PASSIVELY closed!");
 				control.resetConnection(ConnectionState.S_CLOSED);
 			}
 
@@ -277,18 +273,15 @@ public class TCP {
 				// go to FIN_WAIT1 state
 				control.tcb_state = ConnectionState.S_FIN_WAIT_1;
 				// must send the client a FIN
-				TcpPacket close_response = control.createTcpPacket(
-						null, 0, 0, true);
+				TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
 				boolean sent = send_tcp_packet(close_response, true);
 				// go to TIME_WAIT state
 				control.tcb_state = ConnectionState.S_TIME_WAIT;
 				// must send the client an ACK
-				close_response = control.createTcpPacket(null, 0, 0,
-						false);
+				close_response = control.createTcpPacket(null, 0, 0, false);
 				send_tcp_packet(close_response, false);
 				// close connection
-				Logging.getInstance().LogConnectionInformation(control,
-						"TCP connection was ACTIVELY closed!");
+				Logging.getInstance().LogConnectionInformation(control, "TCP connection was ACTIVELY closed!");
 				control.resetConnection(ConnectionState.S_CLOSED);
 			}
 
@@ -326,13 +319,11 @@ public class TCP {
 								// active close (slow)
 								control.tcb_state = ConnectionState.S_CLOSING;
 								// create ACK packet
-								TcpPacket reply = this.control.createTcpPacket(
-										null, 0, 0, false);
+								TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
 								// make sure ACK flag is set
 								reply.setACK_Flag(true);
 								// create IP packet
-								IP.Packet encoded = this.control
-										.createIPPacket(reply);
+								IP.Packet encoded = this.control.createIPPacket(reply);
 								// send ACK
 								ip.ip_send(encoded);
 								// enter timeout mode
@@ -457,6 +448,11 @@ public class TCP {
 					return false;	// we didn´t get a packet we expected => return false
 				}
 				
+				// check if the received packet has the correct flags
+				if (!control.acceptReceivedTcpPacket(tcpPacket)) {
+					return false; // correct, but unexpected packet -> don´t wait for resend, just return false
+				}
+				
 				if (tcpPacket.isFIN_Flag()) {
 					// check state
 					if (control.tcb_state == ConnectionState.S_ESTABLISHED) {
@@ -500,11 +496,7 @@ public class TCP {
 					return false;
 				}
 
-				// check if the received packet has the correct flags
-				if (!control.acceptReceivedTcpPacket(tcpPacket)) {
-					return false; // correct, but unexpected packet -> don´t
-									// wait for resend, just return false
-				}
+
 
 				// don´t send ACK packets, just return true, because of a
 				// successful receive
@@ -1314,7 +1306,16 @@ public class TCP {
 			case S_ESTABLISHED:
 				receivedPacketWasExpected = true;
 				break;
+			/*case S_FIN_WAIT_1:
+				if (!tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag()) {
+					receivedPacketWasExpected = true;
+				}
+				break;*/
+			default:
+				receivedPacketWasExpected = true;
+				break;
 			}
+			
 
 			if (receivedPacketWasExpected) {
 				if (tcpPacket.isACK_Flag()) {
