@@ -286,9 +286,9 @@ public class ClientServerTest extends AndroidTestCase {
 				// try reading again
 				serverSocket.read(buf, 0, 1024);
 				
-				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
 				// connection state should be CLOSED
-				Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
+				Assert.assertEquals(ConnectionState.S_CLOSED, check);
 				
 	        }
 	    });
@@ -340,7 +340,7 @@ public class ClientServerTest extends AndroidTestCase {
 	}
 
 
-	public void testT015LargeReadWrite() {
+	public void testT024LargeReadWrite() {
 		// START SERVER in a thread
 		Thread serverThread = new Thread(new Runnable() {
 	        public void run() {
@@ -348,11 +348,14 @@ public class ClientServerTest extends AndroidTestCase {
 	    
 	        	int serverIP = 1;
 	    		int serverPort = 80;
-	    		byte[] exptectedTextToReceive = new byte[9*1024];
+	    		int expectedLen = 20*1024;
+	    		byte[] exptectedTextToReceive = new byte[expectedLen];
 				Socket serverSocket = getServerSocket(serverIP, serverPort);
-				
-				for (int i=0; i<9*1024; i++)
-					exptectedTextToReceive[i] = "A".getBytes()[0];
+								
+				StringBuilder textToSend = new StringBuilder();
+	        	for (int i=0; i<expectedLen; i++)
+					textToSend.append("A");
+	        	exptectedTextToReceive = textToSend.toString().getBytes();
 				
 				// listen at serverSocketListener and accept new incoming connections
 				serverSocket.accept();
@@ -364,15 +367,17 @@ public class ClientServerTest extends AndroidTestCase {
 					e.printStackTrace();
 				}
 				
-				byte[] buf = new byte[9*1024];
-				if (serverSocket.read(buf, 0, 9*1024-1) <= 0) {
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] buf = new byte[expectedLen];
+				if (serverSocket.read(buf, 0, expectedLen) <= 0) {
 					fail("Failed to read a message from the client!"+buf.toString());
 				}
 				
-				for(int i = 0; i<9*1024; i++) {
+
+				for(int i = 0; i<expectedLen; i++) {
 					assertEquals(exptectedTextToReceive[i], buf[i]);
 				}
-				serverSocket.close();
 	        }
 	    });
 		serverThread.start();
@@ -387,9 +392,11 @@ public class ClientServerTest extends AndroidTestCase {
 	        	int serverIP = 1;
 	        	int clientIP = 2;
 	        	int server_socket = 80;
+	        	int expectedLen = 20*1024;
+	        	
 	        	StringBuilder textToSend = new StringBuilder();
 	        	
-	        	for (int i=0; i<9*1024; i++)
+	        	for (int i=0; i<expectedLen; i++)
 					textToSend.append("A");
 	        	
 				Socket clientSocket = getClientSocket(clientIP);
@@ -400,12 +407,10 @@ public class ClientServerTest extends AndroidTestCase {
 					fail("Failure during connect to server!");
 				}
 				
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
 				byte[] textByteArray = textToSend.toString().getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
-				
-				// close connection
-				clientSocket.close();
-				
 			}
 		});
 		clientThread.start();
@@ -420,6 +425,99 @@ public class ClientServerTest extends AndroidTestCase {
 		}
 	}
 
+	
+	public void testT025LargeReadWriteWithMultipleRead() {
+		// START SERVER in a thread
+		Thread serverThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test server");
+	    
+	        	int serverIP = 1;
+	    		int serverPort = 80;
+	    		int expectedLen = 20*1024;
+	    		byte[] exptectedTextToReceive = new byte[expectedLen];
+				Socket serverSocket = getServerSocket(serverIP, serverPort);
+				
+				
+				StringBuilder textToSend = new StringBuilder();
+	        	for (int i=0; i<expectedLen; i++)
+					textToSend.append("A");
+	        	exptectedTextToReceive = textToSend.toString().getBytes();
+				
+				// listen at serverSocketListener and accept new incoming connections
+				serverSocket.accept();
+				
+				try {
+					this.wait(1000);	// wait a bit
+				}
+				catch (Exception e) {
+					e.printStackTrace();
+				}
+				
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] buf = new byte[expectedLen];
+				if (serverSocket.read(buf, 0, 5000) <= 0) {
+					fail("Failed to read a message from the client!"+buf.toString());
+				}
+				
+				if (serverSocket.read(buf, 5000, 15000) <= 0) {
+					fail("Failed to read a message from the client!"+buf.toString());
+				}
+								
+				if (serverSocket.read(buf, 20000, expectedLen) <= 0) {
+					fail("Failed to read a message from the client!"+buf.toString());
+				}
+
+				for(int i = 0; i<expectedLen; i++) {
+					assertEquals(exptectedTextToReceive[i], buf[i]);
+				}
+	        }
+	    });
+		serverThread.start();
+		
+		
+		
+	    // START CLIENT in a thread
+		Thread clientThread = new Thread(new Runnable() {
+	        public void run() {
+	        	Logging.getInstance().LogConnectionInformation(null, "test client");
+	    	    
+	        	int serverIP = 1;
+	        	int clientIP = 2;
+	        	int server_socket = 80;
+	        	int expectedLen = 20*1024;
+	        	
+	        	StringBuilder textToSend = new StringBuilder();
+	        	
+	        	for (int i=0; i<expectedLen; i++)
+					textToSend.append("A");
+	        	
+				Socket clientSocket = getClientSocket(clientIP);
+				
+				// create server IP address and connect to server
+				IpAddress serverAddress = IpAddress.getAddress("192.168.0." + serverIP);
+				if (!clientSocket.connect(serverAddress, server_socket)) {
+					fail("Failure during connect to server!");
+				}
+				
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				
+				byte[] textByteArray = textToSend.toString().getBytes();
+				clientSocket.write(textByteArray, 0, textByteArray.length);
+			}
+		});
+		clientThread.start();
+		
+		
+		try {
+			serverThread.join();
+			clientThread.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			fail("Exception when joining the client and server thread: " + e.getMessage());
+		}
+	}
 	
 	/**
 	 * Create a client and a server in a separate thread, establish the connection, send "Hello World!" and close the connection.
@@ -458,9 +556,9 @@ public class ClientServerTest extends AndroidTestCase {
 				// try reading again
 				serverSocket.read(buf, 0, 1024);
 				
-				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
 				// connection state should be CLOSED
-				Assert.assertEquals(ConnectionState.S_CLOSED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
+				Assert.assertEquals(ConnectionState.S_CLOSED, check);
 				
 	        }
 	    });

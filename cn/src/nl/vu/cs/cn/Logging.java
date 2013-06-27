@@ -22,7 +22,7 @@ public class Logging {
 	}
 	
 	
-	
+	/**if detailedLogging is on, then the current connection state with some additional information is written to LogCat*/
 	private boolean detailedLogging = true;
 	
 	/**

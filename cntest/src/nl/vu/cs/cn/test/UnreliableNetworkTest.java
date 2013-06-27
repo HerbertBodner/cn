@@ -1,10 +1,5 @@
 package nl.vu.cs.cn.test;
 
-import junit.framework.Assert;
-import nl.vu.cs.cn.ConnectionState;
-import nl.vu.cs.cn.Logging;
-import nl.vu.cs.cn.IP.IpAddress;
-import nl.vu.cs.cn.TCP.Socket;
 import nl.vu.cs.nc.test.PacketLossControl;
 import android.test.AndroidTestCase;
 
@@ -24,7 +19,6 @@ public class UnreliableNetworkTest extends AndroidTestCase {
 		
 		// SYN packet should be lost 1 time
 		PacketLossControl.getInstance().SetSYNPacketLost(1);
-		
 		
 		ClientServerTest.runClientServerCommunication();
 	}

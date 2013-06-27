@@ -2,6 +2,7 @@ package nl.vu.cs.cn;
 
 /**
  * This class contains some useful functions for checking ranges of different fields (port, SEQ/ACK number).
+ * The class also helps to create new initial sequence numbers.
  * @author Herbert Bodner, Alexandru Assandei
  *
  */
@@ -79,6 +80,7 @@ public class ConnectionUtils {
 		ISN_TIMESTAMP = System.currentTimeMillis();
 		
 		return (System.currentTimeMillis()-stored_timestamp)*4 % ConnectionUtils.MAX32BIT_VALUE;
+		
 	}
 	
 	/**

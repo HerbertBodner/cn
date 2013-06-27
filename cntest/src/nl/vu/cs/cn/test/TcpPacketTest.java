@@ -2,7 +2,6 @@ package nl.vu.cs.cn.test;
 
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 import nl.vu.cs.cn.IP.IpAddress;
 import nl.vu.cs.cn.TCP;
@@ -100,7 +99,7 @@ public class TcpPacketTest extends AndroidTestCase {
 	
 
 
-	
+	/*
 	public void testT013BasicTCPSendRecv() {
 		TCP tcp1 = null;
 		TCP tcp2 = null;
@@ -115,6 +114,10 @@ public class TcpPacketTest extends AndroidTestCase {
 			sender.getTcpControlBlock().setRemoteIPAddressForTesting(IpAddress.getAddress("192.168.0.2").getAddress());
 			receiver.getTcpControlBlock().setRemoteIPAddressForTesting(IpAddress.getAddress("192.168.0.1").getAddress());
 			
+			// set the connectionState to ESTABLISHED
+			sender.getTcpControlBlock().setConnectionStateForTesting(ConnectionState.S_ESTABLISHED);
+			receiver.getTcpControlBlock().setConnectionStateForTesting(ConnectionState.S_ESTABLISHED);
+			
 			byte[] payload = "test".getBytes();
 			byte[] buf = ByteBuffer.allocate(4).array();
 			sender.write(payload, 0, 4);
@@ -128,6 +131,6 @@ public class TcpPacketTest extends AndroidTestCase {
 		}
 		
 		
-	}
+	}*/
 	
 }

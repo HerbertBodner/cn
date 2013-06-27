@@ -1,11 +1,8 @@
 package nl.vu.cs.cn;
 
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.security.InvalidParameterException;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Random;
 
 import nl.vu.cs.cn.IP.IpAddress;
@@ -22,21 +19,19 @@ public class TCP {
 
 	/**
 	 * This class represents a TCP socket.
-	 * 
 	 */
 	public class Socket {
 
-		/* Hint: You probably need some socket specific data. */
-
-		/*
-		 * The TCP control block contains all details (like the state) of the
-		 * connection
-		 */
+		/** The TCP control block contains all details (like the state) of the connection.*/
 		TcpControlBlock control;
 
+		/** Contains the last sent IP packet.*/
 		IP.Packet sent_IP_packet;
+		
+		/** Contains the last received IP packet.*/
 		IP.Packet recv_IP_packet;
 
+		
 		/**
 		 * Construct a client socket.
 		 */
@@ -54,10 +49,6 @@ public class TCP {
 		 * @throws IOException
 		 */
 		private Socket(int port) throws IOException {
-
-			// TODO: HB: We can check if the port is not already used by another
-			// TCP connection (therefore we can create a HashMap<Number,
-			// TcpControlBlock> to store the currently active TCP connections)
 			control = new TcpControlBlock(ip.getLocalAddress(), port);
 			recv_IP_packet = control.createIPPacket();
 		}
@@ -114,25 +105,12 @@ public class TCP {
 			}
 
 			
-			
 			// Create and send ACK packet
 			TcpPacket ack_packet = control.createTcpPacket(null, 0, 0, false);
-
 			if (!send_tcp_packet(ack_packet, false)) {
 				Logging.getInstance().LogTcpPacketError(control, "Sending ACK packet failed, 'connect' aborted!");
 				return false;
 			}
-
-			
-
-			/*
-			// wait to receive a packet
-			if (!recv_tcp_packet(true, false)) {
-				Logging.getInstance().LogTcpPacketError(control, "Receiving SYN/ACK packet failed, 'connect' aborted!");
-				control.resetConnection(ConnectionState.S_CLOSED);
-				return false;
-			}
-			*/
 
 			return true;
 		}
@@ -146,16 +124,13 @@ public class TCP {
 			// we have to be in state LISTEN, when accept is called, otherwise
 			// something went wrong and we return
 			if (control.tcb_state != ConnectionState.S_LISTEN) {
-				Logging.getInstance()
-						.LogConnectionError(control,
-								"TCP has to be in LISTEN state, when calling method 'accept'!");
+				Logging.getInstance().LogConnectionError(control, "TCP has to be in LISTEN state, when calling method 'accept'!");
 				return;
 			}
 
 			// Start with the three-way handshake here.
 			if (!recv_tcp_packet(false, true)) {
-				Logging.getInstance().LogTcpPacketError(control,
-						"Receiving SYN packet failed, 'accept' aborted!");
+				Logging.getInstance().LogTcpPacketError(control, "Receiving SYN packet failed, 'accept' aborted!");
 				return;
 			}
 
@@ -173,14 +148,6 @@ public class TCP {
 				control.resetConnection(ConnectionState.S_LISTEN);
 				return;
 			}
-/*
-			// wait to receive a ACK packet
-			if (!recv_tcp_packet(false, false)) {
-				Logging.getInstance().LogTcpPacketError(control,
-						"Receiving ACK packet failed, 'accept' aborted!");
-				control.resetConnection(ConnectionState.S_LISTEN);
-				return;
-			}*/
 		}
 
 		/**
@@ -197,29 +164,56 @@ public class TCP {
 		 */
 		public int read(byte[] buf, int offset, int maxlen) {
 
-        	if (maxlen  < TcpPacket.MAX_PAYLOAD_LENGTH) {
-        		// Read from the socket here.
-            	if (!recv_tcp_packet(true, false))
-            		return -1;
+			long payloadLength = 0;
+			int totalPayloadLength = 0;
+			
+			// check if there is already some data received from before, which was stored in control.tcb_undelivered_data_len
+			// this may happen, when a received packet contains more data then can be delivered, because of the restriction of the parameter 'maxlen'
+			if (control.tcb_undelivered_data_len > 0) {
+				totalPayloadLength = control.tcb_undelivered_data_len;
+				if (totalPayloadLength > maxlen)
+					totalPayloadLength = maxlen;
+				// deliver the undelivered data (by copying to 'buf') 
+				System.arraycopy(control.tcb_undelivered_data, 0, buf, offset, totalPayloadLength);
+				
+				if (totalPayloadLength == maxlen) {
+					control.tcb_undelivered_data_len -= maxlen;
+					System.arraycopy(control.tcb_undelivered_data, totalPayloadLength, control.tcb_undelivered_data, 0, control.tcb_undelivered_data_len);
+					return maxlen;
+				}
+				control.tcb_undelivered_data_len = 0;
+			}
+			
+			// call receive until at most maxlen bytes have been received
+			while (totalPayloadLength < maxlen) {
+				
+				// Read from the socket here.
+            	if (!recv_tcp_packet(true, false)) {
+            		if (totalPayloadLength == 0)
+            			return -1;	// return -1 if nothing can be delivered
+            		else
+            			return totalPayloadLength;
+            	}
+            	
             	
             	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
-            	tcp.getPayload(buf, offset);
-                return (int)tcp.getPayloadLength();
-        	}
-        	else {
-        		int segments = maxlen / TcpPacket.MAX_PAYLOAD_LENGTH + 1;
-        		
-        		for (int i=0; i<segments; i++)  {
-        			// Read from the socket here.
-                	if (!recv_tcp_packet(true, false))
-                		return (i*TcpPacket.MAX_PAYLOAD_LENGTH);
-                	
-                	TcpPacket tcp = new TcpPacket(this.recv_IP_packet.source, this.recv_IP_packet.destination, this.recv_IP_packet.data, this.recv_IP_packet.length);
-                	tcp.getPayload(buf, offset+i*TcpPacket.MAX_PAYLOAD_LENGTH);                    
-        		}
-        		return (buf.length-offset);
-        	}
-        	
+            	payloadLength = tcp.getPayloadLength();
+            	
+            	long realPayloadLength = payloadLength; 
+            	if (totalPayloadLength + payloadLength > maxlen) 
+            		realPayloadLength = maxlen - totalPayloadLength;
+            	
+            	// copy the payload of the received packet to 'buf'
+            	tcp.getPayload(buf, offset+totalPayloadLength, 0, (int)realPayloadLength);
+            	totalPayloadLength += realPayloadLength;
+            	
+            	// if there is some additional received data, which cannot be delivered, then copy it to control.tcb_undelivered_data and deliver it when 'read' is called again 
+            	if (realPayloadLength < payloadLength) {
+            		tcp.getPayload(control.tcb_undelivered_data, 0, (int)realPayloadLength, (int)(payloadLength - realPayloadLength));
+            		control.tcb_undelivered_data_len = (int)(payloadLength - realPayloadLength);
+            	}
+			}
+			return totalPayloadLength;        	
         }
 
 		/**
@@ -261,15 +255,7 @@ public class TCP {
         			byte[] tempbuf = new byte[length];
         			for (int k=0; k<length; k++)
         				tempbuf[k] = control.tcb_data[offset+i*TcpPacket.MAX_PAYLOAD_LENGTH+k];
-        			TcpPacket next_packet = control.createTcpPacket(tempbuf, 
-        					0, 
-        					length, 
-        					false);
-    	        	if (next_packet == null) {
-    	        		return -1;
-    	        	}
-    	        	
-    	        	this.sent_IP_packet = control.createIPPacket(next_packet);	        	
+        			TcpPacket next_packet = control.createTcpPacket(tempbuf, 0, length, false);
     	        	if (!send_tcp_packet(next_packet, true))
     	        		return -1;
         		}
@@ -305,9 +291,8 @@ public class TCP {
 				control.tcb_state = ConnectionState.S_LAST_ACK;
 				// must send the client a FIN
 				TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
-				// we don't check for the result of the send because we close
-				// the connection anyway
-				boolean response = send_tcp_packet(close_response, true);
+				// we don't check for the result of the send because we close the connection anyway
+				send_tcp_packet(close_response, true);
 				// close connection
 				Logging.getInstance().LogConnectionInformation(control, "TCP connection was PASSIVELY closed!");
 				control.resetConnection(ConnectionState.S_CLOSED);
@@ -320,7 +305,7 @@ public class TCP {
 				control.tcb_state = ConnectionState.S_FIN_WAIT_1;
 				// must send the client a FIN
 				TcpPacket close_response = control.createTcpPacket(null, 0, 0, true);
-				boolean sent = send_tcp_packet(close_response, true);
+				send_tcp_packet(close_response, true);
 				// go to TIME_WAIT state
 				control.tcb_state = ConnectionState.S_TIME_WAIT;
 				// must send the client an ACK
@@ -360,7 +345,7 @@ public class TCP {
 					if (recv_IP_packet == null)
 						continue;
 
-					TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, true);
+					TcpPacket tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, false);
 					if (tcpPacket != null) {
 						if (control.tcb_state == ConnectionState.S_FIN_WAIT_1) {
 							if (tcpPacket.isFIN_Flag()
@@ -383,8 +368,7 @@ public class TCP {
 								} catch (InterruptedException e) {
 									// ignore timeout
 								} finally {
-									// we close the connection regardless of the
-									// received packet
+									// we close the connection regardless of the received packet
 									this.close();
 								}
 								// send failed
@@ -409,8 +393,7 @@ public class TCP {
 								} catch (InterruptedException e) {
 									// ignore timeout
 								} finally {
-									// we close the connection regardless of the
-									// received packet
+									// we close the connection regardless of the received packet
 									this.close();
 								}
 								// send failed
@@ -435,8 +418,7 @@ public class TCP {
 								} catch (InterruptedException e) {
 									// ignore timeout
 								} finally {
-									// we close the connection regardless of the
-									// received packet
+									// we close the connection regardless of the received packet
 									this.close();
 								}
 								// send failed
@@ -475,8 +457,7 @@ public class TCP {
 
 				} catch (InterruptedException e) {
 					e.printStackTrace();
-					// no ACK received within 1 second, retry => increase
-					// counter
+					// no ACK received within timeout, retry => increase counter
 					i++;
 				}
 			}
@@ -495,18 +476,18 @@ public class TCP {
 					ip.ip_receive_timeout(recv_IP_packet, 10);
 					// check if real packet has been received
 					if (recv_IP_packet == null)
-						return false;
+						continue;
 	
 					// verify the packet
 					tcpPacket = control.verifyReceivedPacket(this.recv_IP_packet, acceptNewConnection);
 					if (tcpPacket != null) {
-						// received a valid packet, break out from the for loop (which is used to resend old packages in case of received packages
+						// received a valid packet, break out from the for loop (which is used to resend old packages in case of received packages)
 						break;
 					}
 					else {
 						// Re-send old package
 						ip.ip_send(this.sent_IP_packet);
-						Logging.getInstance().LogConnectionInformation(control, "Resend packet, because received packet was not an expected packet!");
+						Logging.getInstance().LogConnectionInformation(control, "Resend previous packet, because received packet was not an expected packet!");
 					}
 				}
 
@@ -525,8 +506,7 @@ public class TCP {
 						// passive close
 						control.tcb_state = ConnectionState.S_CLOSE_WAIT;
 						// create ACK packet
-						TcpPacket reply = this.control.createTcpPacket(
-								null, 0, 0, false);
+						TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
 						// make sure ACK flag is set
 						reply.setACK_Flag(true);
 						// create IP packet
@@ -539,8 +519,7 @@ public class TCP {
 						// active close (fast)
 						control.tcb_state = ConnectionState.S_TIME_WAIT;
 						// create FIN+ACK packet
-						TcpPacket reply = this.control.createTcpPacket(null, 0,
-								0, true);
+						TcpPacket reply = this.control.createTcpPacket(null, 0, 0, true);
 						// make sure ACK flag is set
 						reply.setACK_Flag(true);
 						// create IP packet
@@ -570,23 +549,13 @@ public class TCP {
 					return true;
 
 				// create ACK packet
-				TcpPacket reply = this.control.createTcpPacket(null, 0, 0,
-						false);
+				TcpPacket reply = this.control.createTcpPacket(null, 0, 0, false);
 				// make sure ACK flag is set
 				reply.setACK_Flag(true);
 				// create IP packet
 				IP.Packet encoded = this.control.createIPPacket(reply);
 				// send ACK
 				ip.ip_send(encoded);
-				// verify for duplicates
-				/*
-				 * if (this.control.tcb_remote_next_expected_SEQ_num ==
-				 * decoded.getSEQNumber()) continue; // ACK was resent, listen
-				 * for next packet (do not push this duplicate to application)
-				 * // update control block info
-				 * this.control.tcb_remote_next_expected_SEQ_num =
-				 * decoded.getSEQNumber();
-				 */
 				// exit current waiting loop
 				return true;
 			} catch (IOException e) {
@@ -598,7 +567,7 @@ public class TCP {
 				e.printStackTrace();
 			}
 
-			// successfully received
+			// not successfully received
 			return false;
 		}
 
@@ -814,7 +783,6 @@ public class TCP {
 				payloadLength = payload.length;
 				rawData.position(HEADER_SIZE);
 				rawData.put(payload);
-				int dummy=1;
 			}
 
 			// the length of the TCP packet is the length of the payload plus
@@ -917,15 +885,19 @@ public class TCP {
 			return rawData.array();
 		}
 
+		public void getPayload(byte[] payload, int offset) {
+			int payloadLength = packetLength - HEADER_SIZE;
+			getPayload(payload, offset, 0, payloadLength);
+		}
+		
 		/**
 		 * Saves the payload of the package in the given variable 'payload'.
 		 * 
 		 * @param payload
 		 */
-		public void getPayload(byte[] payload, int offset) {
-    		int payloadLength = packetLength - HEADER_SIZE;
-    		for (int i = offset; i < payloadLength; i++) {
-    			payload[i] = rawData.get(HEADER_SIZE+i);
+		public void getPayload(byte[] payload, int offsetDestination, int offsetSource, int payloadLength) {
+    		for (int i = 0; i < payloadLength; i++) {
+   				payload[offsetDestination+i] = rawData.get(HEADER_SIZE+offsetSource+i);
     		}
     	}
 
@@ -1078,9 +1050,6 @@ public class TCP {
 	 */
 	public class TcpControlBlock {
 
-		// TODO
-		// private int TCB_BUF_SIZE = 8192;
-
 		/** Our IP address. */
 		int tcb_local_ip_addr;
 
@@ -1114,16 +1083,16 @@ public class TCP {
 		 * The last SEQ number, which we expect from the other side. This is
 		 * needed to verify the accepted receiving packet length.
 		 */
-		long tcb_remote_last_expected_SEQ_num;
+		long tcb_remote_last_expected_SEQ_num = TcpPacket.MAX_PAYLOAD_LENGTH;
 
 		/** Static buffer for recv data. */
 		byte tcb_data[];
 
 		/** The undelivered data. */
-		byte tcb_p_data[];
+		byte[] tcb_undelivered_data = new byte[TCP.TcpPacket.MAX_PAYLOAD_LENGTH];
 
-		/** Undelivered data bytes. */
-		int tcb_data_left[];
+		/** The amount of undelivered data bytes. */
+		int tcb_undelivered_data_len = 0;
 
 		/** The current TCP connection state. */
 		ConnectionState tcb_state;
@@ -1159,8 +1128,8 @@ public class TCP {
 			tcb_communication_side = "CLIENT";
 
 			// SEQ and ACK are set to default values
-			tcb_local_sequence_num = 0; // -1;
-			tcb_local_expected_ack = 0; // -1;
+			tcb_local_sequence_num = 0;
+			tcb_local_expected_ack = 0;
 		}
 
 		/**
@@ -1187,8 +1156,8 @@ public class TCP {
 			tcb_local_port = local_port;
 
 			// SEQ and ACK are set to default values
-			tcb_local_sequence_num = 0; // -1;
-			tcb_local_expected_ack = 0; // -1;
+			tcb_local_sequence_num = 0;
+			tcb_local_expected_ack = 0;
 
 			// set the connection status to LISTEN for the server
 			tcb_state = ConnectionState.S_LISTEN;
@@ -1281,10 +1250,8 @@ public class TCP {
 				if (tcb_state != ConnectionState.S_SYN_SENT) {
 					// Verify the SEQ number, which should be the
 					// tcb_remote_next_expected_SEQ_num
-					if (tcb_remote_next_expected_SEQ_num != tcpPacket
-							.getSEQNumber()) {
-						Logging.getInstance().LogTcpPacketError(
-								this,
+					if (tcb_remote_next_expected_SEQ_num != tcpPacket.getSEQNumber()) {
+						Logging.getInstance().LogTcpPacketError(this,
 								"Wrong SEQ number. Expected was '"
 										+ tcb_remote_next_expected_SEQ_num
 										+ "', but was '"
@@ -1346,8 +1313,7 @@ public class TCP {
 				break;
 
 			case S_SYN_SENT:
-				if (tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag()
-						&& !tcpPacket.isFIN_Flag()) {
+				if (tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
 					receivedPacketWasExpected = true;
 				} else {
 					Logging.getInstance().LogTcpPacketError(this, "Expected SYN/ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
@@ -1356,11 +1322,8 @@ public class TCP {
 
 			case S_LISTEN:
 				if (tcpPacket.isSYN_Flag() && !tcpPacket.isACK_Flag() && !tcpPacket.isFIN_Flag()) {
-					// If we were in LISTEN state and received a valid SYN
-					// package, we go to SYN_RCVD state and create a new
-					// tcb_local_sequence_num
+					// If we were in LISTEN state and received a valid SYN package, we go to SYN_RCVD state
 					tcb_state = ConnectionState.S_SYN_RCVD;
-					
 					receivedPacketWasExpected = true;
 				} else {
 					Logging.getInstance().LogTcpPacketError(this, "Expected SYN packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
@@ -1382,23 +1345,13 @@ public class TCP {
 
 					receivedPacketWasExpected = true;
 				} else {
-					Logging.getInstance().LogTcpPacketError(
-							this,
-							"Expected ACK packet, but actual package had SYN="
-									+ tcpPacket.isSYN_Flag() + ", ACK="
-									+ tcpPacket.isACK_Flag() + ", FIN="
-									+ tcpPacket.isFIN_Flag());
+					Logging.getInstance().LogTcpPacketError(this, "Expected ACK packet, but actual package had SYN=" + tcpPacket.isSYN_Flag() + ", ACK=" + tcpPacket.isACK_Flag() + ", FIN=" + tcpPacket.isFIN_Flag());
 				}
 				break;
 
 			case S_ESTABLISHED:
 				receivedPacketWasExpected = true;
 				break;
-			/*case S_FIN_WAIT_1:
-				if (!tcpPacket.isSYN_Flag() && tcpPacket.isACK_Flag()) {
-					receivedPacketWasExpected = true;
-				}
-				break;*/
 			default:
 				receivedPacketWasExpected = true;
 				break;
@@ -1455,22 +1408,21 @@ public class TCP {
 			// set the SEQ/ACK before creating the TCP package
 			switch (tcb_state) {
 			case S_CLOSED:
-				// SYN packet: create new SEQ number, set ACK-NR to 0
+				// SYN packet: create new initial SEQ number, set ACK-NR to 0
 				tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 				tcb_remote_next_expected_SEQ_num = 0;
 				break;
 			case S_SYN_SENT:
 				break;
 			case S_SYN_RCVD:
-				// create SYN/ACK package
+				// SYN/ACK package: create new initial SEQ number
 				tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 				break;
 			case S_TIME_WAIT:
+				break;
 			case S_CLOSE_WAIT:
-				// create FIN/ACK packet
 				break;
 			case S_FIN_WAIT_1:
-				// create FIN packet
 				break;
 			default:
 				break;
@@ -1485,18 +1437,14 @@ public class TCP {
 					buf);
 
 			// increase the tcb_local_sequence_num
-			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(
-					tcb_local_sequence_num, len);
+			tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, len);
 
-			// set the FLAGS and the connection state after creating the TCP
-			// package
+			// set the FLAGS and the connection state after creating the TCP package
 			switch (tcb_state) {
 			case S_CLOSED:
 				// create SYN packet
 				next_packet.setSYN_Flag(true);
-				tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
-				tcb_local_expected_ack = tcb_local_sequence_num;
-				
+			
 				// set connection state to SYN_SENT after successful sent a SYN packet
 				tcb_state = ConnectionState.S_SYN_SENT;
 				break;
@@ -1511,8 +1459,6 @@ public class TCP {
 				// create SYN/ACK packet
 				next_packet.setSYN_Flag(true);
 				next_packet.setACK_Flag(true);
-				tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
-				tcb_local_expected_ack = tcb_local_sequence_num;
 				break;
 			case S_ESTABLISHED:
 				tcb_local_expected_ack = tcb_local_sequence_num;
@@ -1536,13 +1482,10 @@ public class TCP {
 
 			// check if closing connection is allowed and set FIN flag
 			if (setFIN) {
-				/*
-				 * if (tcb_state != ConnectionState.S_ESTABLISHED) {
-				 * Logging.getInstance().LogTcpPacketError(
-				 * "Only established connection can be closed! (ConnectionState='"
-				 * + tcb_state + "')."); return null; }
-				 */
-				next_packet.setFIN_Flag(true);
+				next_packet.setFIN_Flag(true);				
+			}
+			
+			if (next_packet.isSYN_Flag() || next_packet.isFIN_Flag()) {
 				tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
 				tcb_local_expected_ack = tcb_local_sequence_num;
 			}
@@ -1565,9 +1508,9 @@ public class TCP {
 				tcb_remote_next_expected_SEQ_num = 0;
 				tcb_remote_last_expected_SEQ_num = 0;
 				tcb_data = null;
-				tcb_p_data = null;
-				tcb_data_left = null;
 				tcb_state = resetState;
+				tcb_undelivered_data = new byte[TCP.TcpPacket.MAX_PAYLOAD_LENGTH];
+				tcb_undelivered_data_len = 0;
 				break;
 			case S_LISTEN:
 				tcb_state = resetState;
@@ -1584,10 +1527,7 @@ public class TCP {
 		 */
 		public IP.Packet createIPPacket(TcpPacket tcpPacket) {
 			byte[] ip_data = tcpPacket.getByteArray();
-			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4, // TODO: IPv4
-																// (should we
-																// also support
-																// IPv6?)
+			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4,
 					1, // TODO: change this
 					ip_data, ip_data.length);
 			ip.source = tcb_local_ip_addr;
@@ -1601,10 +1541,7 @@ public class TCP {
 		 */
 		public IP.Packet createIPPacket() {
 
-			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4, // TODO: IPv4
-																// (should we
-																// also support
-																// IPv6?)
+			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4, 
 					1, // TODO: change this
 					new byte[] {}, 0);
 			ip.source = tcb_local_ip_addr;
@@ -1698,13 +1635,7 @@ public class TCP {
 			return this.tcb_data;
 		}
 
-		public void setRemoteDataLeftForTesting(int[] data_left) {
-			this.tcb_data_left = data_left;
-		}
 
-		public int[] getRemoteDataLeftForTesting() {
-			return this.tcb_data_left;
-		}
 	}
 
 	/**
