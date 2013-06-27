@@ -1232,12 +1232,19 @@ public class TCP {
 				tcb_remote_port = tcpPacket.getSourcePort();
 			}
 
-			// TODO: verify ports (this would also be detected by verifyChecksum
-			// of the TcpPacket, so it´s nice but not really necessary)
-
+			// verify ports
+			if (tcpPacket.getSourcePort() != tcb_remote_port) {
+				Logging.getInstance().LogTcpPacketError(this, "The received TCP packet had the wrong source port. Expected='" +tcb_remote_port+ "', actual='" + tcpPacket.getSourcePort() + "'!"); 
+				verifyReceivedFailure = PacketVerifyFailure.F_WRONG_PORT;
+			}
+			if (tcpPacket.getDestinationPort() != tcb_local_port) {
+				Logging.getInstance().LogTcpPacketError(this, "The received TCP packet had the wrong destination port. Expected='" +tcb_local_port+ "', actual='" + tcpPacket.getDestinationPort() + "'!"); 
+				verifyReceivedFailure = PacketVerifyFailure.F_WRONG_PORT;
+			}
+			
+			// Verify checksum
 			if (!tcpPacket.verifyChecksum()) {
-				Logging.getInstance().LogTcpPacketError(this,
-						"The received TCP packet had the wrong checksum!");
+				Logging.getInstance().LogTcpPacketError(this, "The received TCP packet had the wrong checksum!");
 				verifyReceivedFailure = PacketVerifyFailure.F_CORRUPT;
 				return null;
 			}
