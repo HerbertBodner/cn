@@ -42,7 +42,7 @@ public class ClientThread extends Thread {
 			_messageHistory.append("\nCould not connect to "+_ip);
 		}
 		else {
-			_messageHistory.append("\nEnetered: "+clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+			_messageHistory.append("\nConnected ");
 		}
 		
 		clientSocket.close();
