@@ -68,7 +68,7 @@ public class ConnectionUtils {
 	 */
 	public static long getNewSequenceNumber() {
 		
-		// for temporary testing (do not checkin this)
+		// "return 0" is for temporary testing (do not checkin this)
 		//return 0;
 		
 		if (SEQUENCE_NR_STARTVALUE_FOR_TESTING != 0) {

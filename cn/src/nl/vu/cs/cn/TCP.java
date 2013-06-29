@@ -53,15 +53,6 @@ public class TCP {
 			recv_IP_packet = control.createIPPacket();
 		}
 
-		/**
-		 * Returns the TcpControlBlock. This method is only used for
-		 * manipulation of the TcpControlBlock for testing purposes.
-		 * 
-		 * @return
-		 */
-		public TcpControlBlock getTcpControlBlock() {
-			return control;
-		}
 
 		/**
 		 * Connect this socket to the specified destination and port.
@@ -319,6 +310,13 @@ public class TCP {
 			return true;
 		}
 
+		/**
+		 * This method sends a TCP packet and if waitForACKAfterSend is true, it also waits for an corresponding ACK.
+		 * If no ACK or an unexpected ACK is received, we resend the packet and again wait for an ACK (we do this up to 10 times).
+		 * @param tcpPacketToSend
+		 * @param waitForACKAfterSend
+		 * @return
+		 */
 		private boolean send_tcp_packet(TcpPacket tcpPacketToSend, boolean waitForACKAfterSend) {
 
 			// save previously sent packet
@@ -467,6 +465,15 @@ public class TCP {
 			return true;
 		}
 
+		/**
+		 * If an IP packet is received, the packet is verified (verifyReceivedPacket) and if this is successful, it is accepted (acceptReceivedPacket).
+		 * If an unexpected packet is received (e.g. wrong SEQ number), the previous sent packet is sent again and we wait to receive another packet.
+		 * If we receive 10 times an unexpected packet, false is returned.
+		 * 
+		 * @param sendACKAfterReceive: If sendACKAfterReceive is true, then an ACK packet is send, after we successfully received an expected packet.
+		 * @param acceptNewConnection: if acceptNewConnection is true, then the source-ip/-port of the packet are set for a new connection.
+		 * @return
+		 */
 		private boolean recv_tcp_packet(boolean sendACKAfterReceive, boolean acceptNewConnection) {
 
 			try {
@@ -571,6 +578,17 @@ public class TCP {
 			return false;
 		}
 
+		
+		/**
+		 * Returns the TcpControlBlock. This method is only used for
+		 * manipulation of the TcpControlBlock for testing purposes.
+		 * 
+		 * @return
+		 */
+		public TcpControlBlock getTcpControlBlockForTesting() {
+			return control;
+		}
+		
 		/**
 		 * Returns the last received Tcp Packet. This method is only used for
 		 * testing purposes.
@@ -592,36 +610,29 @@ public class TCP {
 	 */
 	public class TcpPacket {
 
-		// TODO check the max length of the payload:
-		// - in the book (p. 539) they say it´s 536 by default
-		// - Wikipedia says it is 1500 - 20 - 20 = 1460 Byte (20 Byte IP-Header,
-		// 20 Byte TCP-Header)
-		// AA: see Knowledge Sharing AA-0.1 about max payload
+		/** Maximum Payload length (8KB - 40 byte headers) */
 		static final int MAX_PAYLOAD_LENGTH = 8152;
-		static final int HEADER_SIZE = 20; // AA: TCP header size is 20B
+		
+		/** TCP header size is 20B */
+		static final int HEADER_SIZE = 20;
 
-		/*
-		 * the source IP address, which is needed for calculation of the
-		 * checksum
-		 */
+		/** the source IP address, which is needed for calculation of the checksum*/
 		int source_ip;
 
-		/*
-		 * the destination IP address, which is needed for calculation of the
-		 * checksum
-		 */
+		/** the destination IP address, which is needed for calculation of the checksum */
 		int destination_ip;
 
-		/* contains the Tcp Packet in a raw byte format */
+		/** contains the Tcp Packet in a raw byte format */
 		ByteBuffer rawData = null;
 
-		/* the TCP header checksum */
+		/** the TCP header checksum */
 		byte[] checksum = null;
 
-		/* the data for the TCP packet */
+		/** the data for the TCP packet. This variable is only used when creating new TCP packets for sending. 
+		 * When receiving a TCP packet, no new memory is allocated, but the same memory as the IP packet is used. */
 		byte[] data;
 
-		/* the length of the TCP packet */
+		/** the length of the TCP packet */
 		int packetLength;
 
 		/**
@@ -709,12 +720,7 @@ public class TCP {
 		 * */
 		private void fillTcpPacket(int source_port, int destination_port,
 				long seq_nr, long ack_nr, byte[] payload) {
-			// TODO: check whether the conversion (int to short) is done
-			// correctly for e.g. 65535
-			// AA: I think it's safer (and easier to control) converting to byte
-			// array
-			// TODO: check byte ordering (little endian vs. big endian): host
-			// uses big endian
+			// Check byte ordering (little endian vs. big endian): host uses big endian
 			byte[] raw_src_port = ByteBuffer.allocate(4).putInt(source_port)
 					.array();
 			byte[] raw_dest_port = ByteBuffer.allocate(4)
@@ -722,34 +728,26 @@ public class TCP {
 			byte[] raw_seq_nr = ByteBuffer.allocate(8).putLong(seq_nr).array();
 			byte[] raw_ack_nr = ByteBuffer.allocate(8).putLong(ack_nr).array();
 
-			// set the source_port, destination_port, seq_nr and ack_nr in the
-			// rawData of the TCP packet
-			// AA: because we are using big endian we ignore the first half of
-			// each int/long when extracting short/int from them
-			// (alternatively we could also shift <<2/<<4 and use
-			// putShort/putInt)
+			// set the source_port, destination_port, seq_nr and ack_nr in the rawData of the TCP packet
+			// because we are using big endian we ignore the first half of each int/long when extracting short/int from them
 			rawData.put(0, raw_src_port[2]);
 			rawData.put(1, raw_src_port[3]);
-			// rawData.putShort(0, (short)source_port);
+			
 			rawData.put(2, raw_dest_port[2]);
 			rawData.put(3, raw_dest_port[3]);
-			// rawData.putShort(2, (short)destination_port);
+			
 			rawData.put(4, raw_seq_nr[4]);
 			rawData.put(5, raw_seq_nr[5]);
 			rawData.put(6, raw_seq_nr[6]);
 			rawData.put(7, raw_seq_nr[7]);
-			// rawData.putInt(4, (int)seq_nr);
+
 			rawData.put(8, raw_ack_nr[4]);
 			rawData.put(9, raw_ack_nr[5]);
 			rawData.put(10, raw_ack_nr[6]);
 			rawData.put(11, raw_ack_nr[7]);
-			// rawData.putInt(8, (int)ack_nr);
-			// STATUS: 12 bytes set, 8 remaining in header
 
-			/*
-			 * TCP header length: in our case we have no Options, therefore the
-			 * header has a fixed length of 5 32-bit words
-			 */
+			// STATUS: 12 bytes set, 8 remaining in header
+			// TCP header length: in our case we have no Options, therefore the header has a fixed length of 5 32-bit words
 			// STATUS: next byte is for DATA OFFSET, RESERVED and NS
 			rawData.put(12, (byte) (5 << 4));
 
@@ -1088,7 +1086,8 @@ public class TCP {
 		/** Static buffer for recv data. */
 		byte tcb_data[];
 
-		/** The undelivered data. */
+		/** The undelivered data. 
+		 * This array is filled when read-method delivers only a part of the received packet (due to the parameter maxlen) */
 		byte[] tcb_undelivered_data = new byte[TCP.TcpPacket.MAX_PAYLOAD_LENGTH];
 
 		/** The amount of undelivered data bytes. */
@@ -1399,19 +1398,6 @@ public class TCP {
 		public TcpPacket createTcpPacket(byte[] buf, int offset, int len,
 				boolean setFIN) {
 
-			// sending data is only allowed, when the connection is in a
-			// specific state
-			// TODO: extend the possible cases (CLOSING connections) and return
-			// null
-			/*
-			 * if (len > 0) { if (tcb_state == ConnectionState.S_CLOSED ||
-			 * tcb_state == ConnectionState.S_LISTEN) {
-			 * 
-			 * Logging.getInstance().LogConnectionError(this,
-			 * "You have to establish a connection first, before sending data is allowed!"
-			 * ); return null; } }
-			 */
-
 			// set the SEQ/ACK before creating the TCP package
 			switch (tcb_state) {
 			case S_CLOSED:
@@ -1419,18 +1405,12 @@ public class TCP {
 				tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 				tcb_remote_next_expected_SEQ_num = 0;
 				break;
-			case S_SYN_SENT:
-				break;
+
 			case S_SYN_RCVD:
 				// SYN/ACK package: create new initial SEQ number
 				tcb_local_sequence_num = ConnectionUtils.getNewSequenceNumber();
 				break;
-			case S_TIME_WAIT:
-				break;
-			case S_CLOSE_WAIT:
-				break;
-			case S_FIN_WAIT_1:
-				break;
+
 			default:
 				break;
 			}
@@ -1472,7 +1452,7 @@ public class TCP {
 				break;
 			case S_CLOSING:
 			case S_CLOSE_WAIT:
-				// ceate ACK packet for received FIN
+				// create ACK packet for received FIN
 				next_packet.setACK_Flag(true);
 				break;
 			case S_LAST_ACK:
@@ -1485,13 +1465,16 @@ public class TCP {
 				next_packet.setACK_Flag(true);
 				next_packet.setFIN_Flag(true);
 				break;
+			default:
+				break;
 			}
 
-			// check if closing connection is allowed and set FIN flag
+			// set FIN flag
 			if (setFIN) {
 				next_packet.setFIN_Flag(true);				
 			}
 			
+			// if SYN or FIN flag set, then increase the local SEQ and the expected ACK counter
 			if (next_packet.isSYN_Flag() || next_packet.isFIN_Flag()) {
 				tcb_local_sequence_num = ConnectionUtils.getNextSequenceNumber(tcb_local_sequence_num, 1);
 				tcb_local_expected_ack = tcb_local_sequence_num;
@@ -1501,7 +1484,8 @@ public class TCP {
 		}
 
 		/**
-		 * Resets the connection to state CLOSED and resets all variables
+		 * Resets the connection to state to the given resetState.
+		 * @param resetState
 		 */
 		public void resetConnection(ConnectionState resetState) {
 			switch (resetState) {
@@ -1522,6 +1506,8 @@ public class TCP {
 			case S_LISTEN:
 				tcb_state = resetState;
 				break;
+			default:
+				break;
 			}
 
 		}
@@ -1535,7 +1521,7 @@ public class TCP {
 		public IP.Packet createIPPacket(TcpPacket tcpPacket) {
 			byte[] ip_data = tcpPacket.getByteArray();
 			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4,
-					1, // TODO: change this
+					1, // IP packet ID field: an advanced feature used for traceback and identifying spoofed addresses (we can safely leave it =1)
 					ip_data, ip_data.length);
 			ip.source = tcb_local_ip_addr;
 			return ip;
@@ -1549,7 +1535,7 @@ public class TCP {
 		public IP.Packet createIPPacket() {
 
 			IP.Packet ip = new IP.Packet(tcb_remote_ip_addr, 4, 
-					1, // TODO: change this
+					1, // IP packet ID field: an advanced feature used for traceback and identifying spoofed addresses (we can safely leave it =1)
 					new byte[] {}, 0);
 			ip.source = tcb_local_ip_addr;
 			return ip;
