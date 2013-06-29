@@ -89,7 +89,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.accept();
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[1024];
 				if (serverSocket.read(buf, 0, 1024) <= 0) {
@@ -126,7 +126,7 @@ public class ClientServerTest extends AndroidTestCase {
 				}
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -169,7 +169,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.accept();
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[1024];
 				if (serverSocket.read(buf, 0, 1024) <= 0) {
@@ -189,8 +189,8 @@ public class ClientServerTest extends AndroidTestCase {
 				assertEquals(0, SEQnum);
 				assertEquals(0, ACKnum);
 				
-				long localSEQNum = serverSocket.getTcpControlBlock().getLocalSeqForTesting();
-				long remoteNextSEQNum = serverSocket.getTcpControlBlock().getRemoteNextSeqForTesting();
+				long localSEQNum = serverSocket.getTcpControlBlockForTesting().getLocalSeqForTesting();
+				long remoteNextSEQNum = serverSocket.getTcpControlBlockForTesting().getRemoteNextSeqForTesting();
 				assertEquals(0, localSEQNum);
 				assertEquals(12, remoteNextSEQNum);
 	        }
@@ -219,7 +219,7 @@ public class ClientServerTest extends AndroidTestCase {
 				}
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -233,8 +233,8 @@ public class ClientServerTest extends AndroidTestCase {
 				assertEquals(0, SEQnum);
 				assertEquals(12, ACKnum);
 				
-				long localSEQNum = clientSocket.getTcpControlBlock().getLocalSeqForTesting();
-				long remoteNextSEQNum = clientSocket.getTcpControlBlock().getRemoteNextSeqForTesting();
+				long localSEQNum = clientSocket.getTcpControlBlockForTesting().getLocalSeqForTesting();
+				long remoteNextSEQNum = clientSocket.getTcpControlBlockForTesting().getRemoteNextSeqForTesting();
 				assertEquals(12, localSEQNum);
 				assertEquals(0, remoteNextSEQNum);
 	        }
@@ -267,7 +267,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.accept();
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[1024];
 				if (serverSocket.read(buf, 0, 1024) <= 0) {
@@ -287,7 +287,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.read(buf, 0, 1024);
 				
 				// connection state should be CLOSED
-				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
+				ConnectionState check = serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting();
 				Assert.assertEquals(ConnectionState.S_CLOSED, check);
 				
 	        }
@@ -315,7 +315,7 @@ public class ClientServerTest extends AndroidTestCase {
 				}
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -324,7 +324,7 @@ public class ClientServerTest extends AndroidTestCase {
 				clientSocket.close();
 				
 				// connection state should be CLOSED
-				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 	        }
 		});
 		clientThread.start();
@@ -367,7 +367,7 @@ public class ClientServerTest extends AndroidTestCase {
 					e.printStackTrace();
 				}
 				
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[expectedLen];
 				if (serverSocket.read(buf, 0, expectedLen) <= 0) {
@@ -407,7 +407,7 @@ public class ClientServerTest extends AndroidTestCase {
 					fail("Failure during connect to server!");
 				}
 				
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.toString().getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -454,7 +454,7 @@ public class ClientServerTest extends AndroidTestCase {
 					e.printStackTrace();
 				}
 				
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[expectedLen];
 				if (serverSocket.read(buf, 0, 5000) <= 0) {
@@ -501,7 +501,7 @@ public class ClientServerTest extends AndroidTestCase {
 					fail("Failure during connect to server!");
 				}
 				
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.toString().getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -537,7 +537,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.accept();
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] buf = new byte[1024];
 				if (serverSocket.read(buf, 0, 1024) <= 0) {
@@ -557,7 +557,7 @@ public class ClientServerTest extends AndroidTestCase {
 				serverSocket.read(buf, 0, 1024);
 				
 				// connection state should be CLOSED
-				ConnectionState check = serverSocket.getTcpControlBlock().getConnectionStateForTesting();
+				ConnectionState check = serverSocket.getTcpControlBlockForTesting().getConnectionStateForTesting();
 				Assert.assertEquals(ConnectionState.S_CLOSED, check);
 				
 	        }
@@ -585,7 +585,7 @@ public class ClientServerTest extends AndroidTestCase {
 				}
 				
 				// connection state should be ESTABLISHED
-				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_ESTABLISHED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 				
 				byte[] textByteArray = textToSend.getBytes();
 				clientSocket.write(textByteArray, 0, textByteArray.length);
@@ -594,7 +594,7 @@ public class ClientServerTest extends AndroidTestCase {
 				clientSocket.close();
 				
 				// connection state should be CLOSED
-				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+				assertEquals(ConnectionState.S_CLOSED, clientSocket.getTcpControlBlockForTesting().getConnectionStateForTesting());
 	        }
 		});
 		clientThread.start();
