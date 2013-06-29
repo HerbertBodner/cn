@@ -76,6 +76,7 @@ public class TCP {
 
 			// check if the given parameters (dst, port) are correct
 			if (dst == null || !ConnectionUtils.isPortValid(port)) {
+				Logging.getInstance().LogConnectionError(control, "Destination is null or port invalid > "+dst+":"+port);
 				return false;
 			}
 
@@ -112,6 +113,7 @@ public class TCP {
 				return false;
 			}
 
+			Logging.getInstance().LogConnectionError(control, "Connection successful > "+dst+":"+port);
 			return true;
 		}
 
@@ -129,11 +131,13 @@ public class TCP {
 			}
 
 			// Start with the three-way handshake here.
-			if (!recv_tcp_packet(false, true)) {
-				Logging.getInstance().LogTcpPacketError(control, "Receiving SYN packet failed, 'accept' aborted!");
-				return;
+			while (!recv_tcp_packet(false, true)) {
+				Logging.getInstance().LogTcpPacketError(control, "No SYN packet received, listening...");
+				//return;
 			}
 
+			Logging.getInstance().LogTcpPacketError(control, "Client connecting!");
+			
 			// Create and send SYN/ACK package
 			TcpPacket synack_packet = control
 					.createTcpPacket(null, 0, 0, false);
@@ -183,14 +187,18 @@ public class TCP {
 				}
 				control.tcb_undelivered_data_len = 0;
 			}
+			// TODO: return -1 on conn close
 			
 			// call receive until at most maxlen bytes have been received
 			while (totalPayloadLength < maxlen) {
 				
 				// Read from the socket here.
             	if (!recv_tcp_packet(true, false)) {
-            		if (totalPayloadLength == 0)
-            			return -1;	// return -1 if nothing can be delivered
+            		if (totalPayloadLength == 0) {
+            			Logging.getInstance().LogTcpPacketError(control,
+        						"READ: empty packet");
+            			return 0;	// return 0 if nothing can be delivered
+            		}
             		else
             			return totalPayloadLength;
             	}
@@ -236,13 +244,16 @@ public class TCP {
 	            // Write to the socket here.       	
 	        	TcpPacket next_packet = control.createTcpPacket(control.tcb_data, offset, len, false);
 	        	if (next_packet == null) {
+	        		Logging.getInstance().LogConnectionInformation(control, "WRITE: created packet is null");
 	        		return -1;
 	        	}
 	        	       	
 	        	if (send_tcp_packet(next_packet, true))
 	        		return len;
-	        	else
+	        	else {
+	        		Logging.getInstance().LogConnectionInformation(control, "WRITE: simple send failed");
 	        		return -1;
+	        	}
         	}
         	else {
         		int segments = len / TcpPacket.MAX_PAYLOAD_LENGTH + 1;
@@ -256,8 +267,10 @@ public class TCP {
         			for (int k=0; k<length; k++)
         				tempbuf[k] = control.tcb_data[offset+i*TcpPacket.MAX_PAYLOAD_LENGTH+k];
         			TcpPacket next_packet = control.createTcpPacket(tempbuf, 0, length, false);
-    	        	if (!send_tcp_packet(next_packet, true))
+    	        	if (!send_tcp_packet(next_packet, true)) {
+    	        		Logging.getInstance().LogConnectionInformation(control, "WRITE: send failed "+i);
     	        		return -1;
+    	        	}
         		}
         		
         		return len;
@@ -471,9 +484,9 @@ public class TCP {
 
 			try {
 				TcpPacket tcpPacket = null;
-				for (int i = 0; i<10; i++) {
+				for (int i=0; i<10; i++) {
 					// wait for packet
-					ip.ip_receive_timeout(recv_IP_packet, 10);
+					ip.ip_receive_timeout(recv_IP_packet, 1);
 					// check if real packet has been received
 					if (recv_IP_packet == null)
 						continue;

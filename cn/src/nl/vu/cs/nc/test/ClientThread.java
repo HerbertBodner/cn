@@ -3,6 +3,8 @@ package nl.vu.cs.nc.test;
 import java.io.IOException;
 import java.math.BigInteger;
 
+import android.widget.TextView;
+
 import nl.vu.cs.cn.TCP;
 import nl.vu.cs.cn.IP.IpAddress;
 import nl.vu.cs.cn.TCP.Socket;
@@ -11,9 +13,12 @@ public class ClientThread extends Thread {
 	
 	private String _ip;
 	private int _port;
-	public ClientThread(String ip, int port){
+	private TextView _messageHistory;
+	
+	public ClientThread(String ip, int port, TextView messages){
 		_ip = ip;
 		_port = port;
+		_messageHistory = messages;
 	}
 	
 	
@@ -33,22 +38,15 @@ public class ClientThread extends Thread {
 		IpAddress serverAddress = IpAddress.getAddress(_ip);
 		clientSocket.connect(serverAddress, _port);
 		
-		// send number 3
-		//TODO: add '\0' at the end
-		byte[] three = BigInteger.valueOf(3).toByteArray();
-		clientSocket.write(three, 0, 4);
-		
-		// send number 4
-		//TODO: add '\0' at the end
-		byte[] four = BigInteger.valueOf(4).toByteArray();
-		clientSocket.write(four, 0, 4);
-		
-		// receive the sum of the two numbers
-		byte[] buffer = new byte[5];
-		while (clientSocket.read(buffer, 0, 5) > 0)
-		{
-		
+		if (!clientSocket.connect(serverAddress, _port)) {
+			_messageHistory.append("\nCould not connect to "+_ip);
 		}
+		else {
+			_messageHistory.append("\nEnetered: "+clientSocket.getTcpControlBlock().getConnectionStateForTesting());
+		}
+		
+		clientSocket.close();
+		_messageHistory.append("\nConnection closed");
 		
 		
 		} catch (IOException e) {
